@@ -1606,18 +1606,11 @@ test("sidepanel auto summarizes quickly when switching YouTube tabs", async ({
     await injectContentScript(harness, "content-scripts/extract.js", videoA);
     await injectContentScript(harness, "content-scripts/extract.js", videoB);
 
-    const panel = await openExtensionPage(harness, "sidepanel.html", "#title");
-    await waitForPanelPort(panel);
-    await maybeBringToFront(pageA);
-    await activateTabByUrl(harness, videoA);
-    await waitForActiveTabUrl(harness, videoA);
-    await mockDaemonSummarize(harness);
-
     const sseBody = (text: string) =>
       ["event: chunk", `data: ${JSON.stringify({ text })}`, "", "event: done", "data: {}", ""].join(
         "\n",
       );
-    await panel.route("http://127.0.0.1:8787/v1/summarize/**/events", async (route) => {
+    await harness.context.route("http://127.0.0.1:8787/v1/summarize/**/events", async (route) => {
       const url = route.request().url();
       const match = url.match(/summarize\/([^/]+)\/events/);
       const runId = match ? (match[1] ?? "") : "";
@@ -1629,6 +1622,12 @@ test("sidepanel auto summarizes quickly when switching YouTube tabs", async ({
         body: sseBody(summaryText),
       });
     });
+    const panel = await openExtensionPage(harness, "sidepanel.html", "#title");
+    await waitForPanelPort(panel);
+    await maybeBringToFront(pageA);
+    await activateTabByUrl(harness, videoA);
+    await waitForActiveTabUrl(harness, videoA);
+    await mockDaemonSummarize(harness);
 
     const waitForSummarizeCall = async (sinceCount: number, startedAt: number) => {
       await expect
