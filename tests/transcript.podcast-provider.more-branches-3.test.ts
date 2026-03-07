@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MAX_OPENAI_UPLOAD_BYTES } from "../packages/core/src/transcription/whisper.js";
 
 type SpawnPlan = "ffmpeg-ok" | "ffmpeg-missing";
@@ -41,6 +41,13 @@ const baseOptions = {
 };
 
 describe("podcast transcript provider - more branches 3", () => {
+  beforeEach(() => {
+    vi.stubEnv("SUMMARIZE_DISABLE_LOCAL_WHISPER_CPP", "1");
+    vi.stubEnv("GEMINI_API_KEY", "");
+    vi.stubEnv("GOOGLE_GENERATIVE_AI_API_KEY", "");
+    vi.stubEnv("GOOGLE_API_KEY", "");
+  });
+
   it("returns a helpful message when transcription keys are missing", async () => {
     const { fetchTranscript } =
       await import("../packages/core/src/content/transcript/providers/podcast.js");

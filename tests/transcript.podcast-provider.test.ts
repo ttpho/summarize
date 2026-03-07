@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchTranscript } from "../packages/core/src/content/transcript/providers/podcast.js";
 
 const baseOptions = {
@@ -13,6 +13,13 @@ const baseOptions = {
 };
 
 describe("podcast transcript provider module", () => {
+  beforeEach(() => {
+    vi.stubEnv("SUMMARIZE_DISABLE_LOCAL_WHISPER_CPP", "1");
+    vi.stubEnv("GEMINI_API_KEY", "");
+    vi.stubEnv("GOOGLE_GENERATIVE_AI_API_KEY", "");
+    vi.stubEnv("GOOGLE_API_KEY", "");
+  });
+
   it("returns a helpful message only when transcription is required but unavailable", async () => {
     const xml = `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><item><enclosure url="https://example.com/episode.mp3" type="audio/mpeg"/></item></channel></rss>`;
 

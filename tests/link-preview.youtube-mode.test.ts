@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createLinkPreviewClient } from "../src/content/index.js";
 
 const jsonResponse = (payload: unknown, status = 200) =>
@@ -14,6 +14,13 @@ const htmlResponse = (html: string, status = 200) =>
   });
 
 describe("link preview extraction (YouTube mode)", () => {
+  beforeEach(() => {
+    vi.stubEnv("SUMMARIZE_DISABLE_LOCAL_WHISPER_CPP", "1");
+    vi.stubEnv("GEMINI_API_KEY", "");
+    vi.stubEnv("GOOGLE_GENERATIVE_AI_API_KEY", "");
+    vi.stubEnv("GOOGLE_API_KEY", "");
+  });
+
   const html =
     "<!doctype html><html><head><title>Sample</title>" +
     '<script>ytcfg.set({"INNERTUBE_API_KEY":"TEST_KEY","INNERTUBE_CONTEXT":{"client":{"clientName":"WEB","clientVersion":"1.0"}},"INNERTUBE_CONTEXT_CLIENT_NAME":1});</script>' +
