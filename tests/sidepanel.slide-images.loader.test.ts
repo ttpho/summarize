@@ -15,6 +15,7 @@ afterEach(() => {
     Reflect.deleteProperty(URL, "createObjectURL");
   }
   globalThis.IntersectionObserver = originalIntersectionObserver;
+  vi.useRealTimers();
   document.body.replaceChildren();
 });
 
@@ -260,6 +261,67 @@ describe("slide image loader", () => {
       expect(img.getAttribute("src")).toBe("blob:visible");
     });
     expect(observerInstanceCount).toBe(1);
+  });
+
+  it("rechecks armed images when layout settles without an intersection callback", async () => {
+    vi.useFakeTimers();
+
+    class MockIntersectionObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+      takeRecords() {
+        return [];
+      }
+    }
+
+    globalThis.IntersectionObserver =
+      MockIntersectionObserver as unknown as typeof IntersectionObserver;
+    const fetchSpy = vi.fn(async () => createSlideFetchResponse({ ready: "1", body: "ok" }));
+    globalThis.fetch = fetchSpy;
+    mockCreateObjectUrl(() => "blob:late-visible");
+
+    const loader = createSlideImageLoader({
+      loadSettings: async () => ({ token: "t", extendedLogging: false }) as Settings,
+    });
+    const wrapper = document.createElement("div");
+    wrapper.className = "slideStrip__thumb";
+    const img = document.createElement("img");
+    const rectSpy = vi.spyOn(img, "getBoundingClientRect");
+    rectSpy.mockReturnValue({
+      x: 0,
+      y: 0,
+      width: 0,
+      height: 0,
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+      toJSON: () => ({}),
+    });
+    wrapper.appendChild(img);
+    document.body.appendChild(wrapper);
+
+    loader.observe(img, "http://127.0.0.1:8787/v1/slides/abc/lazy");
+    await vi.advanceTimersByTimeAsync(100);
+    expect(fetchSpy).not.toHaveBeenCalled();
+
+    rectSpy.mockReturnValue({
+      x: 0,
+      y: 0,
+      width: 120,
+      height: 68,
+      top: 20,
+      right: 120,
+      bottom: 88,
+      left: 0,
+      toJSON: () => ({}),
+    });
+
+    await vi.advanceTimersByTimeAsync(25);
+    await Promise.resolve();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(img.getAttribute("src")).toBe("blob:late-visible");
   });
 
   it("stops retrying when the retry window has elapsed", async () => {

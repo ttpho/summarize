@@ -1535,6 +1535,88 @@ test("sidepanel replaces stale slides when rerunning the same video", async ({
   }
 });
 
+test("sidepanel replaces placeholder slides with the final smaller payload", async ({
+  browserName: _browserName,
+}, testInfo) => {
+  const harness = await launchExtension(getBrowserFromProject(testInfo.project.name));
+
+  try {
+    await seedSettings(harness, {
+      token: "test-token",
+      autoSummarize: false,
+      slidesEnabled: true,
+      slidesParallel: true,
+      slidesOcrEnabled: true,
+    });
+    const page = await openExtensionPage(harness, "sidepanel.html", "#title", () => {
+      (
+        window as typeof globalThis & { __summarizeTestHooks?: Record<string, unknown> }
+      ).__summarizeTestHooks = {};
+    });
+    await waitForPanelPort(page);
+    await waitForApplySlidesHook(page);
+    await routePlaceholderSlideImages(page);
+
+    await sendBgMessage(harness, {
+      type: "ui:state",
+      state: buildUiState({
+        tab: {
+          id: 1,
+          url: "https://www.youtube.com/watch?v=helia123",
+          title: "Helia Video",
+        },
+        media: { hasVideo: true, hasAudio: true, hasCaptions: true },
+        settings: {
+          autoSummarize: false,
+          slidesEnabled: true,
+          slidesParallel: true,
+          slidesOcrEnabled: true,
+          tokenPresent: true,
+        },
+      }),
+    });
+
+    await applySlidesPayload(page, {
+      sourceUrl: "https://www.youtube.com/watch?v=helia123",
+      sourceId: "youtube-helia123",
+      sourceKind: "youtube",
+      ocrAvailable: false,
+      slides: [
+        { index: 1, timestamp: 2, imageUrl: "", ocrText: null },
+        { index: 2, timestamp: 63, imageUrl: "", ocrText: null },
+      ],
+    });
+
+    await expect.poll(async () => (await getPanelSlidesTimeline(page)).length).toBe(2);
+
+    await applySlidesPayload(
+      page,
+      buildSlidesPayload({
+        sourceUrl: "https://www.youtube.com/watch?v=helia123",
+        sourceId: "youtube-helia123",
+        count: 1,
+        textPrefix: "Final",
+      }),
+    );
+
+    await expect.poll(async () => (await getPanelSlidesTimeline(page)).length).toBe(1);
+    await expect(
+      page.locator("img.slideStrip__thumbImage, img.slideInline__thumbImage"),
+    ).toHaveCount(1);
+    await expect(
+      page.locator(
+        'img.slideStrip__thumbImage[data-loaded="true"], img.slideInline__thumbImage[data-loaded="true"]',
+      ),
+    ).toHaveCount(1);
+    const slides = await getPanelSlideDescriptions(page);
+    expect(slides[0]?.[1] ?? "").toContain("Final slide 1");
+
+    assertNoErrors(harness);
+  } finally {
+    await closeExtension(harness.context, harness.userDataDir);
+  }
+});
+
 test("sidepanel starts pending slides after returning to a tab with seeded placeholders", async ({
   browserName: _browserName,
 }, testInfo) => {
