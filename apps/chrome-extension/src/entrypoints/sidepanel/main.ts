@@ -45,14 +45,11 @@ import {
   shouldInvalidateCurrentSource,
 } from "./session-policy";
 import { installStepsHtml, wireSetupButtons } from "./setup-view";
-import { createSlideImageLoader, normalizeSlideImageUrl } from "./slide-images";
+import { normalizeSlideImageUrl } from "./slide-images";
 import { createSlidesHydrator } from "./slides-hydrator";
-import { resolveSlidesPayload, slidesPayloadChanged } from "./slides-payload";
 import { hasResolvedSlidesPayload } from "./slides-pending";
-import { createSlidesRenderer } from "./slides-renderer";
 import { shouldSeedPlannedSlidesForRun } from "./slides-seed-policy";
 import {
-  formatSlideTimestamp,
   resolveSlidesLengthArg,
   selectMarkdownForLayout,
   splitSlidesMarkdown,
@@ -60,8 +57,8 @@ import {
 } from "./slides-state";
 import { createSlidesTextController } from "./slides-text-controller";
 import { resolveSlidesRenderLayout } from "./slides-view-policy";
+import { createSlidesViewRuntime } from "./slides-view-runtime";
 import { createStreamController } from "./stream-controller";
-import { renderSummaryMarkdownDisplay } from "./summary-renderer";
 import { parseTimestampHref } from "./timestamp-links";
 import type { ChatMessage, PanelPhase, PanelState, RunStart, UiState } from "./types";
 import { createTypographyController } from "./typography-controller";
@@ -150,7 +147,6 @@ const metricsEl = byId<HTMLDivElement>("metrics");
 const metricsHomeEl = byId<HTMLDivElement>("metricsHome");
 const chatMetricsSlotEl = byId<HTMLDivElement>("chatMetricsSlot");
 const chatDockEl = byId<HTMLDivElement>("chatDock");
-const slideImageLoader = createSlideImageLoader();
 
 const summarizeControlRoot = byId<HTMLElement>("summarizeControlRoot");
 const drawerToggleBtn = byId<HTMLButtonElement>("drawerToggle");
@@ -1191,192 +1187,98 @@ window.addEventListener("unhandledrejection", (event) => {
 });
 
 function renderEmptySummaryState() {
-  renderSummaryMarkdownDisplay({
-    activeTabUrl,
-    autoSummarize: autoValue,
-    currentSourceTitle: panelState.currentSource?.title ?? null,
-    currentSourceUrl: panelState.currentSource?.url ?? null,
-    hasSlides: Boolean(panelState.slides?.slides.length),
-    headerSetStatus: (text) => headerController.setStatus(text),
-    hostEl: renderMarkdownHostEl,
-    inputMode: inputModeOverride ?? inputMode,
-    markdown: "",
-    md,
-    phase: panelState.phase,
-    renderInlineSlides,
-    slidesEnabled: slidesEnabledValue,
-    slidesLayout: slidesLayoutValue,
-    tabTitle: panelState.ui?.tab.title ?? null,
-    tabUrl: panelState.ui?.tab.url ?? null,
-  });
+  slidesViewRuntime.renderEmptySummaryState();
 }
 
 function renderMarkdownDisplay() {
-  renderSummaryMarkdownDisplay({
-    activeTabUrl,
-    autoSummarize: autoValue,
-    currentSourceTitle: panelState.currentSource?.title ?? null,
-    currentSourceUrl: panelState.currentSource?.url ?? null,
-    hasSlides: Boolean(panelState.slides?.slides.length),
-    headerSetStatus: (text) => headerController.setStatus(text),
-    hostEl: renderMarkdownHostEl,
-    inputMode: inputModeOverride ?? inputMode,
-    markdown: panelState.summaryMarkdown ?? "",
-    md,
-    phase: panelState.phase,
-    renderInlineSlides,
-    slidesEnabled: slidesEnabledValue,
-    slidesLayout: slidesLayoutValue,
-    tabTitle: panelState.ui?.tab.title ?? null,
-    tabUrl: panelState.ui?.tab.url ?? null,
-  });
+  slidesViewRuntime.renderMarkdownDisplay();
 }
 
 function renderMarkdown(markdown: string) {
-  panelState.summaryMarkdown = markdown;
-  updateSlideSummaryFromMarkdown(markdown, {
-    preserveIfEmpty: slidesTextController.hasSummaryTitles(),
-    source: "summary",
-  });
-  renderMarkdownDisplay();
-  panelCacheController.scheduleSync();
+  slidesViewRuntime.renderMarkdown(markdown);
+}
+
+function setSlidesBusy(next: boolean) {
+  slidesViewRuntime.setSlidesBusy(next);
 }
 
 function updateSlideSummaryFromMarkdown(
   markdown: string,
   opts?: { preserveIfEmpty?: boolean; source?: "summary" | "slides" },
 ) {
-  const changed = slidesTextController.updateSummaryFromMarkdown(markdown, opts);
-  if (!changed) return;
-  queueSlidesRender();
-}
-
-function setSlidesBusy(next: boolean) {
-  if (slidesBusy === next) return;
-  slidesBusy = next;
-  const toggle = document.querySelector<HTMLButtonElement>(".summarizeSlideToggle");
-  if (toggle) {
-    toggle.dataset.busy = next ? "true" : "false";
-  }
-  headerController.setProgressOverride(next);
-  refreshSummarizeControl();
+  slidesViewRuntime.updateSlideSummaryFromMarkdown(markdown, opts);
 }
 
 function seekToSlideTimestamp(seconds: number | null | undefined) {
   if (seconds == null || !Number.isFinite(seconds)) return;
   void send({ type: "panel:seek", seconds: Math.floor(seconds) });
 }
-function rebuildSlideDescriptions() {
-  slidesTextController.rebuildDescriptions();
-}
-
 function updateSlidesTextState() {
-  slidesTextController.syncTextState();
-  refreshSummarizeControl();
-  queueSlidesRender();
+  slidesViewRuntime.updateSlidesTextState();
 }
 
-function updateSlideThumb(
-  img: HTMLImageElement,
-  thumb: HTMLElement,
-  imageUrl: string | null | undefined,
-) {
-  if (imageUrl) {
-    thumb.classList.add("isPlaceholder");
-    slideImageLoader.observe(img, imageUrl);
-    return;
-  }
-  thumb.classList.add("isPlaceholder");
-  img.removeAttribute("src");
-  img.dataset.loaded = "false";
-  img.dataset.slideImageUrl = "";
+function rebuildSlideDescriptions() {
+  slidesViewRuntime.rebuildSlideDescriptions();
 }
 
-function updateSlideMeta(
-  el: HTMLElement,
-  index: number,
-  timestamp: number | null | undefined,
-  title?: string | null,
-  total?: number | null,
-) {
-  const formatted = formatSlideTimestamp(timestamp);
-  const totalCount = typeof total === "number" && total > 0 ? total : null;
-  const slideLabel = totalCount ? `Slide ${index}/${totalCount}` : `Slide ${index}`;
-  if (title) {
-    el.textContent = formatted ? `${title} · ${formatted}` : title;
-    return;
-  }
-  if (formatted) {
-    el.textContent = `${slideLabel} · ${formatted}`;
-    return;
-  }
-  el.textContent = slideLabel;
-}
-
-const slidesRenderer = createSlidesRenderer({
-  hostEl: renderSlidesHostEl,
-  markdownHostEl: renderMarkdownHostEl,
+const slidesViewRuntime = createSlidesViewRuntime({
+  renderMarkdownHostEl,
+  renderSlidesHostEl,
+  chatMessagesEl,
+  md,
+  headerSetStatus: (text) => headerController.setStatus(text),
+  headerSetProgressOverride: (busy) => headerController.setProgressOverride(busy),
+  slidesTextController,
+  panelCacheController,
+  send,
+  refreshSummarizeControl,
+  hideSlideNotice,
   getState: () => ({
-    slidesEnabled: slidesEnabledValue,
+    activeTabUrl,
+    autoSummarize: autoValue,
+    currentSourceTitle: panelState.currentSource?.title ?? null,
+    currentSourceUrl: panelState.currentSource?.url ?? null,
     inputMode: inputModeOverride ?? inputMode,
-    preferredLayout: slidesLayoutValue,
+    panelState,
+    slidesEnabled: slidesEnabledValue,
+    slidesLayout: slidesLayoutValue,
     slidesExpanded,
-    slides: panelState.slides,
-    descriptions: slidesTextController.getDescriptions(),
-    titles: slidesTextController.getTitles(),
+    mediaAvailable,
   }),
-  ensureDescriptions: rebuildSlideDescriptions,
-  onSeek: seekToSlideTimestamp,
-  setExpanded: (next) => {
-    slidesExpanded = next;
+  setSlidesBusyValue: (value) => {
+    slidesBusy = value;
   },
-  updateThumb: updateSlideThumb,
-  updateMeta: updateSlideMeta,
+  getSlidesBusy: () => slidesBusy,
+  setSlidesContextPending: (value) => {
+    slidesContextPending = value;
+  },
+  getSlidesContextPending: () => slidesContextPending,
+  setSlidesContextUrl: (value) => {
+    slidesContextUrl = value;
+  },
+  getSlidesContextUrl: () => slidesContextUrl,
+  setSlidesSeededSourceId: (value) => {
+    slidesSeededSourceId = value;
+  },
+  getSlidesSeededSourceId: () => slidesSeededSourceId,
+  setSlidesAppliedRunId: (value) => {
+    slidesAppliedRunId = value;
+  },
+  getSlidesAppliedRunId: () => slidesAppliedRunId,
+  resolveActiveSlidesRunId,
+  nextSlidesContextRequestId: () => {
+    slidesContextRequestId += 1;
+    return slidesContextRequestId;
+  },
+  setSlidesExpanded: (value) => {
+    slidesExpanded = value;
+  },
 });
 
+const slidesRenderer = slidesViewRuntime.slidesRenderer;
+
 function applySlidesPayload(data: SseSlidesData) {
-  const isSameSource = Boolean(panelState.slides && panelState.slides.sourceId === data.sourceId);
-  const activeSlidesRunId = resolveActiveSlidesRunId();
-  const normalized: SseSlidesData = {
-    ...data,
-    slides: data.slides.map((slide) => ({
-      ...slide,
-      imageUrl: normalizeSlideImageUrl(slide.imageUrl, data.sourceId, slide.index),
-    })),
-  };
-  const shouldReplaceSeeded = slidesSeededSourceId === data.sourceId;
-  const merged = resolveSlidesPayload(panelState.slides, normalized, {
-    seededSourceId: slidesSeededSourceId,
-    activeSlidesRunId,
-    appliedSlidesRunId: slidesAppliedRunId,
-  });
-  if (shouldReplaceSeeded) {
-    slidesSeededSourceId = null;
-  }
-  if (!slidesPayloadChanged(panelState.slides, merged)) {
-    if (activeSlidesRunId) {
-      slidesAppliedRunId = activeSlidesRunId;
-    }
-    return;
-  }
-  panelState.slides = merged;
-  if (activeSlidesRunId) {
-    slidesAppliedRunId = activeSlidesRunId;
-  }
-  if (!isSameSource) {
-    slidesContextPending = false;
-    slidesContextUrl = null;
-    setSlidesTranscriptTimedText(null);
-    void requestSlidesContext();
-  }
-  updateSlidesTextState();
-  if (panelState.summaryMarkdown) {
-    renderInlineSlides(renderMarkdownHostEl, { fallback: true });
-  }
-  hideSlideNotice();
-  renderInlineSlides(chatMessagesEl);
-  queueSlidesRender();
-  panelCacheController.scheduleSync();
+  slidesViewRuntime.applySlidesPayload(data, setSlidesTranscriptTimedText);
 }
 
 const slidesTestHooks = (
@@ -1485,22 +1387,15 @@ if (slidesTestHooks) {
 }
 
 async function requestSlidesContext() {
-  if (!panelState.slides || slidesContextPending) return;
-  const sourceUrl = panelState.slides.sourceUrl || panelState.currentSource?.url || null;
-  if (sourceUrl && slidesContextUrl === sourceUrl) return;
-  slidesContextPending = true;
-  slidesContextRequestId += 1;
-  const requestId = `slides-${slidesContextRequestId}`;
-  slidesContextUrl = sourceUrl;
-  void send({ type: "panel:slides-context", requestId, url: sourceUrl ?? undefined });
+  await slidesViewRuntime.requestSlidesContext();
 }
 
 function queueSlidesRender() {
-  slidesRenderer.queueRender();
+  slidesViewRuntime.queueSlidesRender();
 }
 
 function renderInlineSlides(container: HTMLElement, opts?: { fallback?: boolean }) {
-  slidesRenderer.renderInline(container, opts);
+  slidesViewRuntime.renderInlineSlides(container, opts);
 }
 
 const LINE_HEIGHT_STEP = 0.1;
