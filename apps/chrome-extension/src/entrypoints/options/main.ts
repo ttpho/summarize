@@ -1,4 +1,3 @@
-import { buildUserScriptsGuidance, getUserScriptsStatus } from "../../automation/userscripts";
 import { defaultSettings, loadSettings, saveSettings } from "../../lib/settings";
 import { applyTheme, type ColorMode, type ColorScheme } from "../../lib/theme";
 import { bindOptionsInputs } from "./bindings";
@@ -10,6 +9,12 @@ import { createModelPresetsController } from "./model-presets";
 import { mountOptionsPickers } from "./pickers";
 import { createProcessesViewer } from "./processes-viewer";
 import { createSkillsController } from "./skills-controller";
+import {
+  applyBuildInfo,
+  copyTokenToClipboard,
+  createAutomationPermissionsController,
+  createStatusController,
+} from "./support";
 import { createOptionsTabs } from "./tab-controller";
 import { createBooleanToggleController } from "./toggles";
 
@@ -105,10 +110,6 @@ let saveInFlight = false;
 let saveQueued = false;
 let saveSequence = 0;
 
-const setStatus = (text: string) => {
-  statusEl.textContent = text;
-};
-
 const logsViewer = createLogsViewer({
   elements: {
     sourceEl: logsSourceEl,
@@ -165,12 +166,7 @@ const { resolveActiveTab } = createOptionsTabs({
   },
 });
 
-let statusTimer = 0;
-const flashStatus = (text: string, duration = 900) => {
-  window.clearTimeout(statusTimer);
-  setStatus(text);
-  statusTimer = window.setTimeout(() => setStatus(""), duration);
-};
+const { setStatus, flashStatus } = createStatusController(statusEl);
 
 const skillsController = createSkillsController({
   elements: {
@@ -254,20 +250,6 @@ const saveNow = async () => {
       void saveNow();
     }
   }
-};
-
-const setBuildInfo = () => {
-  if (!buildInfoEl) return;
-  const version =
-    typeof __SUMMARIZE_VERSION__ === "string" && __SUMMARIZE_VERSION__
-      ? __SUMMARIZE_VERSION__
-      : chrome?.runtime?.getManifest?.().version;
-  const hash = typeof __SUMMARIZE_GIT_HASH__ === "string" ? __SUMMARIZE_GIT_HASH__ : "";
-  const parts: string[] = [];
-  if (version) parts.push(`v${version}`);
-  if (hash && hash !== "unknown") parts.push(hash);
-  buildInfoEl.textContent = parts.join(" · ");
-  buildInfoEl.toggleAttribute("hidden", parts.length === 0);
 };
 
 const resolveExtensionVersion = () => {
@@ -357,6 +339,13 @@ const chatToggle = createBooleanToggleController({
   scheduleAutoSave,
 });
 
+const automationPermissions = createAutomationPermissionsController({
+  automationPermissionsBtn,
+  userScriptsNoticeEl,
+  getAutomationEnabled: () => automationEnabledValue,
+  flashStatus,
+});
+
 const automationToggle = createBooleanToggleController({
   root: automationToggleRoot,
   id: "options-automation",
@@ -366,52 +355,11 @@ const automationToggle = createBooleanToggleController({
     automationEnabledValue = checked;
   },
   scheduleAutoSave,
-  afterChange: updateAutomationPermissionsUi,
+  afterChange: automationPermissions.updateUi,
 });
 
-async function updateAutomationPermissionsUi() {
-  const status = await getUserScriptsStatus();
-  const hasPermission = status.permissionGranted;
-  const apiAvailable = status.apiAvailable;
-
-  automationPermissionsBtn.disabled = !chrome.permissions || (hasPermission && apiAvailable);
-  automationPermissionsBtn.textContent = hasPermission
-    ? "Automation permissions granted"
-    : "Enable automation permissions";
-
-  if (!automationEnabledValue) {
-    userScriptsNoticeEl.hidden = true;
-    return;
-  }
-
-  if (apiAvailable && hasPermission) {
-    userScriptsNoticeEl.hidden = true;
-    return;
-  }
-
-  const steps = [buildUserScriptsGuidance(status)].filter(Boolean);
-
-  userScriptsNoticeEl.textContent = steps.join(" ");
-  userScriptsNoticeEl.hidden = false;
-}
-
-async function requestAutomationPermissions() {
-  if (!chrome.permissions) return;
-  try {
-    const ok = await chrome.permissions.request({
-      permissions: ["userScripts"],
-    });
-    if (!ok) {
-      flashStatus("Permission request denied");
-    }
-  } catch {
-    // ignore
-  }
-  await updateAutomationPermissionsUi();
-}
-
 automationPermissionsBtn.addEventListener("click", () => {
-  void requestAutomationPermissions();
+  void automationPermissions.requestPermissions();
 });
 skillsController.bind();
 
@@ -534,7 +482,7 @@ async function load() {
   pickers.update({ scheme: currentScheme, mode: currentMode, ...pickerHandlers });
   applyTheme({ scheme: s.colorScheme, mode: s.colorMode });
   await skillsController.load();
-  await updateAutomationPermissionsUi();
+  await automationPermissions.updateUi();
   if (resolveActiveTab() === "logs") {
     logsViewer.handleTokenChanged();
   }
@@ -544,25 +492,7 @@ async function load() {
   isInitializing = false;
 }
 
-const copyToken = async () => {
-  const token = tokenEl.value.trim();
-  if (!token) {
-    flashStatus("Token empty");
-    return;
-  }
-  try {
-    await navigator.clipboard.writeText(token);
-    flashStatus("Token copied");
-    return;
-  } catch {
-    // fallback
-  }
-  tokenEl.focus();
-  tokenEl.select();
-  tokenEl.setSelectionRange(0, token.length);
-  const ok = document.execCommand("copy");
-  flashStatus(ok ? "Token copied" : "Copy failed");
-};
+const copyToken = () => copyTokenToClipboard({ tokenEl, flashStatus });
 
 const refreshModelsIfStale = () => {
   modelPresets.refreshIfStale(tokenEl.value);
@@ -610,5 +540,10 @@ bindOptionsInputs({
   defaultHoverPrompt: defaultSettings.hoverPrompt,
 });
 
-setBuildInfo();
+applyBuildInfo(buildInfoEl, {
+  injectedVersion:
+    typeof __SUMMARIZE_VERSION__ === "string" && __SUMMARIZE_VERSION__ ? __SUMMARIZE_VERSION__ : "",
+  manifestVersion: chrome?.runtime?.getManifest?.().version ?? "",
+  gitHash: typeof __SUMMARIZE_GIT_HASH__ === "string" ? __SUMMARIZE_GIT_HASH__ : "",
+});
 void load();
