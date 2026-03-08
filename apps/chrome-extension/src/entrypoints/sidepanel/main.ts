@@ -43,7 +43,6 @@ import {
   shouldAcceptSlidesForCurrentPage,
 } from "./session-policy";
 import { createSetupRuntime, friendlyFetchError } from "./setup-runtime";
-import { normalizeSlideImageUrl } from "./slide-images";
 import { createSlidesHydrator } from "./slides-hydrator";
 import { hasResolvedSlidesPayload } from "./slides-pending";
 import { createSlidesRunRuntime } from "./slides-run-runtime";
@@ -58,6 +57,7 @@ import { createSlidesTextController } from "./slides-text-controller";
 import { resolveSlidesRenderLayout } from "./slides-view-policy";
 import { createSlidesViewRuntime } from "./slides-view-runtime";
 import { createStreamController } from "./stream-controller";
+import { createSummaryViewRuntime } from "./summary-view-runtime";
 import { registerSidepanelTestHooks } from "./test-hooks";
 import { parseTimestampHref } from "./timestamp-links";
 import type { ChatMessage, PanelPhase, PanelState, RunStart, UiState } from "./types";
@@ -943,43 +943,6 @@ async function appendNavigationMessage(url: string, title: string | null) {
 
 const syncWithActiveTab = () => navigationRuntime.syncWithActiveTab();
 
-function resetSummaryView({
-  preserveChat = false,
-  clearRunId = true,
-  stopSlides = true,
-}: {
-  preserveChat?: boolean;
-  clearRunId?: boolean;
-  stopSlides?: boolean;
-} = {}) {
-  currentRunTabId = null;
-  renderEl.replaceChildren(renderSlidesHostEl, renderMarkdownHostEl);
-  renderMarkdownHostEl.innerHTML = "";
-  slidesRenderer.clear();
-  metricsController.clearForMode("summary");
-  panelState.summaryMarkdown = null;
-  panelState.summaryFromCache = null;
-  panelState.slides = null;
-  if (clearRunId) {
-    panelState.runId = null;
-    panelState.slidesRunId = null;
-  }
-  slidesExpanded = true;
-  slidesContextPending = false;
-  slidesContextUrl = null;
-  setSlidesTranscriptTimedText(null);
-  slidesTextController.reset();
-  slidesSeededSourceId = null;
-  slidesAppliedRunId = null;
-  if (stopSlides) {
-    stopSlidesStream();
-  }
-  refreshSummarizeControl();
-  if (!preserveChat) {
-    resetChatState();
-  }
-}
-
 async function clearCurrentView() {
   if (panelState.chatStreaming) {
     requestAgentAbort("Cleared");
@@ -993,102 +956,69 @@ async function clearCurrentView() {
   setPhase("idle");
 }
 
-function buildPanelCachePayload(): PanelCachePayload | null {
-  const tabId = currentRunTabId ?? activeTabId;
-  const url = panelState.currentSource?.url ?? activeTabUrl;
-  if (!tabId || !url) return null;
-  const hasSlidesSummaryState = Boolean(slidesSummaryRunId || slidesSummaryMarkdown.trim());
-  return {
-    tabId,
-    url,
-    title: panelState.currentSource?.title ?? null,
-    runId: panelState.runId ?? null,
-    slidesRunId: panelState.slidesRunId ?? null,
-    summaryMarkdown: panelState.summaryMarkdown ?? null,
-    summaryFromCache: panelState.summaryFromCache ?? null,
-    slidesSummaryMarkdown: slidesSummaryMarkdown || null,
-    slidesSummaryComplete: hasSlidesSummaryState ? slidesSummaryComplete : null,
-    slidesSummaryModel: hasSlidesSummaryState ? slidesSummaryModel : null,
-    lastMeta: panelState.lastMeta,
-    slides: panelState.slides ?? null,
-    transcriptTimedText: slidesTextController.getTranscriptTimedText() ?? null,
-  };
-}
-
-function applyPanelCache(payload: PanelCachePayload, opts?: { preserveChat?: boolean }) {
-  const preserveChat = opts?.preserveChat ?? false;
-  resetSummaryView({ preserveChat });
-  panelState.runId = payload.runId ?? null;
-  panelState.slidesRunId =
-    payload.slidesRunId ?? (slidesParallelValue ? null : (payload.runId ?? null));
-  currentRunTabId = payload.tabId;
-  panelState.currentSource = { url: payload.url, title: payload.title ?? null };
-  panelState.lastMeta = payload.lastMeta ?? { inputSummary: null, model: null, modelLabel: null };
-  panelState.summaryFromCache = payload.summaryFromCache ?? null;
-  slidesSummaryMarkdown = payload.slidesSummaryMarkdown ?? "";
-  slidesSummaryPending = null;
-  slidesSummaryHadError = false;
-  slidesSummaryComplete =
-    payload.slidesSummaryComplete ?? Boolean((payload.slidesSummaryMarkdown ?? "").trim());
-  slidesSummaryModel =
-    payload.slidesSummaryModel ??
-    panelState.lastMeta.model ??
-    panelState.ui?.settings.model ??
-    null;
-  headerController.setBaseTitle(payload.title || payload.url || "Summarize");
-  headerController.setBaseSubtitle(
-    buildIdleSubtitle({
-      inputSummary: panelState.lastMeta.inputSummary,
-      modelLabel: panelState.lastMeta.modelLabel,
-      model: panelState.lastMeta.model,
-    }),
-  );
-  setSlidesTranscriptTimedText(payload.transcriptTimedText ?? null);
-  if (payload.slides) {
-    panelState.slides = {
-      ...payload.slides,
-      slides: payload.slides.slides.map((slide) => ({
-        ...slide,
-        imageUrl: normalizeSlideImageUrl(
-          slide.imageUrl,
-          payload.slides?.sourceId ?? "",
-          slide.index,
-        ),
-      })),
-    };
-    slidesContextPending = false;
-    slidesContextUrl = payload.url;
-    updateSlidesTextState();
-    if (!slidesTextController.getTranscriptAvailable()) {
-      void requestSlidesContext();
-    }
-    slidesAppliedRunId = resolveActiveSlidesRunId();
-  } else {
-    panelState.slides = null;
-    slidesContextPending = false;
-    slidesContextUrl = null;
-    updateSlidesTextState();
-    slidesAppliedRunId = null;
-  }
-  slidesHydrator.syncFromCache({
-    runId: panelState.slidesRunId ?? null,
-    summaryFromCache: payload.summaryFromCache,
-    hasSlides: Boolean(payload.slides && payload.slides.slides.length > 0),
-  });
-  if (slidesSummaryMarkdown.trim()) {
-    updateSlideSummaryFromMarkdown(slidesSummaryMarkdown, {
-      preserveIfEmpty: false,
-      source: "slides",
-    });
-  }
-  if (payload.summaryMarkdown) {
-    renderMarkdown(payload.summaryMarkdown);
-  } else {
-    renderMarkdownDisplay();
-  }
-  queueSlidesRender();
-  setPhase("idle");
-}
+const summaryViewRuntime = createSummaryViewRuntime({
+  panelState,
+  renderEl,
+  renderSlidesHostEl,
+  renderMarkdownHostEl,
+  slidesRenderer,
+  metricsController,
+  headerController,
+  slidesTextController,
+  slidesHydrator,
+  stopSlidesStream,
+  refreshSummarizeControl,
+  resetChatState,
+  setSlidesTranscriptTimedText,
+  getSlidesParallelValue: () => slidesParallelValue,
+  getCurrentRunTabId: () => currentRunTabId,
+  getActiveTabId: () => activeTabId,
+  getActiveTabUrl: () => activeTabUrl,
+  setCurrentRunTabId: (value) => {
+    currentRunTabId = value;
+  },
+  setSlidesContextPending: (value) => {
+    slidesContextPending = value;
+  },
+  setSlidesContextUrl: (value) => {
+    slidesContextUrl = value;
+  },
+  setSlidesSeededSourceId: (value) => {
+    slidesSeededSourceId = value;
+  },
+  setSlidesAppliedRunId: (value) => {
+    slidesAppliedRunId = value;
+  },
+  setSlidesExpanded: (value) => {
+    slidesExpanded = value;
+  },
+  resolveActiveSlidesRunId,
+  getSlidesSummaryState: () => ({
+    runId: slidesSummaryRunId,
+    markdown: slidesSummaryMarkdown,
+    complete: slidesSummaryComplete,
+    model: slidesSummaryModel,
+  }),
+  setSlidesSummaryState: (payload) => {
+    slidesSummaryMarkdown = payload.markdown;
+    slidesSummaryComplete = payload.complete;
+    slidesSummaryModel = payload.model;
+  },
+  clearSlidesSummaryPending: () => {
+    slidesSummaryPending = null;
+  },
+  clearSlidesSummaryError: () => {
+    slidesSummaryHadError = false;
+  },
+  updateSlidesTextState,
+  requestSlidesContext,
+  updateSlideSummaryFromMarkdown,
+  renderMarkdown,
+  renderMarkdownDisplay,
+  queueSlidesRender,
+  setPhase,
+});
+const { applyPanelCache, buildPanelCachePayload, resetSummaryView } = summaryViewRuntime;
 
 const panelCacheController = createPanelCacheController({
   getSnapshot: buildPanelCachePayload,
