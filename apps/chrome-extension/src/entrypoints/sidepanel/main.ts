@@ -30,6 +30,7 @@ import { createErrorController } from "./error-controller";
 import { createHeaderController } from "./header-controller";
 import { createMetricsController } from "./metrics-controller";
 import { createModelPresetsController } from "./model-presets";
+import { createNavigationRuntime } from "./navigation-runtime";
 import { createPanelCacheController, type PanelCachePayload } from "./panel-cache";
 import { createPanelPortRuntime } from "./panel-port";
 import {
@@ -315,10 +316,6 @@ const slidesTextController = createSlidesTextController({
   getSlidesOcrEnabled: () => slidesOcrEnabledValue,
 });
 
-const AGENT_NAV_TTL_MS = 20_000;
-type AgentNavigation = { url: string; tabId: number | null; at: number };
-let lastAgentNavigation: AgentNavigation | null = null;
-let pendingPreserveChatForUrl: { url: string; at: number } | null = null;
 const chatHistoryStore = createChatHistoryStore({ chatLimits });
 
 const chatController = new ChatController({
@@ -426,7 +423,7 @@ function attachSummaryRun(run: RunStart) {
   if (panelState.chatStreaming) {
     finishStreamingMessage();
   }
-  const preserveChat = shouldPreserveChatForRun(run.url);
+  const preserveChat = navigationRuntime.shouldPreserveChatForRun(run.url);
   if (!preserveChat) {
     void clearChatHistoryForActiveTab();
     resetChatState();
@@ -896,53 +893,21 @@ updateChatDockHeight();
 const chatDockObserver = new ResizeObserver(() => updateChatDockHeight());
 chatDockObserver.observe(chatDockEl);
 
-function markAgentNavigationIntent(url: string | null | undefined) {
-  const trimmed = typeof url === "string" ? url.trim() : "";
-  if (!trimmed) return;
-  lastAgentNavigation = { url: trimmed, tabId: null, at: Date.now() };
-}
-
-function markAgentNavigationResult(details: unknown) {
-  if (!details || typeof details !== "object") return;
-  const obj = details as { finalUrl?: unknown; tabId?: unknown };
-  const finalUrl = typeof obj.finalUrl === "string" ? obj.finalUrl.trim() : "";
-  const tabId = typeof obj.tabId === "number" ? obj.tabId : null;
-  if (!finalUrl && tabId == null) return;
-  lastAgentNavigation = {
-    url: finalUrl || lastAgentNavigation?.url || "",
-    tabId,
-    at: Date.now(),
-  };
-}
-
-function isRecentAgentNavigation(tabId: number | null, url: string | null) {
-  if (!lastAgentNavigation) return false;
-  if (Date.now() - lastAgentNavigation.at > AGENT_NAV_TTL_MS) {
-    lastAgentNavigation = null;
-    return false;
-  }
-  if (tabId != null && lastAgentNavigation.tabId != null && tabId === lastAgentNavigation.tabId) {
-    return true;
-  }
-  if (url && lastAgentNavigation.url && panelUrlsMatch(url, lastAgentNavigation.url)) {
-    return true;
-  }
-  return false;
-}
-
-function notePreserveChatForUrl(url: string | null) {
-  if (!url) return;
-  pendingPreserveChatForUrl = { url, at: Date.now() };
-}
-
-function shouldPreserveChatForRun(url: string) {
-  const pending = pendingPreserveChatForUrl;
-  if (pending && Date.now() - pending.at < AGENT_NAV_TTL_MS && panelUrlsMatch(url, pending.url)) {
-    pendingPreserveChatForUrl = null;
-    return true;
-  }
-  return isRecentAgentNavigation(null, url);
-}
+const navigationRuntime = createNavigationRuntime({
+  getCurrentSource: () => panelState.currentSource,
+  setCurrentSource: (source) => {
+    panelState.currentSource = source;
+  },
+  resetForNavigation: (preserveChat) => {
+    currentRunTabId = null;
+    setPhase("idle");
+    resetSummaryView({ preserveChat });
+    headerController.setBaseSubtitle("");
+  },
+  setBaseTitle: (title) => {
+    headerController.setBaseTitle(title);
+  },
+});
 
 async function migrateChatHistory(fromTabId: number | null, toTabId: number | null) {
   if (!fromTabId || !toTabId || fromTabId === toTabId) return;
@@ -979,42 +944,7 @@ async function appendNavigationMessage(url: string, title: string | null) {
   void persistChatHistory();
 }
 
-function canSyncTabUrl(url: string | null | undefined): url is string {
-  if (!url) return false;
-  if (url.startsWith("chrome://")) return false;
-  if (url.startsWith("chrome-extension://")) return false;
-  if (url.startsWith("moz-extension://")) return false; // Firefox extension pages
-  if (url.startsWith("edge://")) return false;
-  if (url.startsWith("about:")) return false;
-  return true;
-}
-
-async function syncWithActiveTab() {
-  if (!panelState.currentSource) return;
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.url || !canSyncTabUrl(tab.url)) return;
-    if (!panelUrlsMatch(tab.url, panelState.currentSource.url)) {
-      const preserveChat = isRecentAgentNavigation(tab.id ?? null, tab.url);
-      if (preserveChat) {
-        notePreserveChatForUrl(tab.url);
-      }
-      panelState.currentSource = null;
-      currentRunTabId = null;
-      setPhase("idle");
-      resetSummaryView({ preserveChat });
-      headerController.setBaseTitle(tab.title || tab.url || "Summarize");
-      headerController.setBaseSubtitle("");
-      return;
-    }
-    if (tab.title && tab.title !== panelState.currentSource.title) {
-      panelState.currentSource = { ...panelState.currentSource, title: tab.title };
-      headerController.setBaseTitle(tab.title);
-    }
-  } catch {
-    // ignore
-  }
-}
+const syncWithActiveTab = () => navigationRuntime.syncWithActiveTab();
 
 function resetSummaryView({
   preserveChat = false,
@@ -1896,10 +1826,10 @@ function updateControls(state: UiState) {
   const mediaFromState = Boolean(state.media && (state.media.hasVideo || state.media.hasAudio));
   const preserveChatForTab =
     (activeTabId === null && nextTabId !== null && hasActiveChat) ||
-    isRecentAgentNavigation(nextTabId, nextTabUrl);
+    navigationRuntime.isRecentAgentNavigation(nextTabId, nextTabUrl);
   const preserveChatForUrl =
     (activeTabUrl === null && nextTabUrl !== null && hasActiveChat) ||
-    isRecentAgentNavigation(activeTabId, nextTabUrl);
+    navigationRuntime.isRecentAgentNavigation(activeTabId, nextTabUrl);
   const navigation = resolvePanelNavigationDecision({
     activeTabId,
     activeTabUrl,
@@ -1920,7 +1850,9 @@ function updateControls(state: UiState) {
 
   if (navigation.kind === "tab") {
     if (navigation.preserveChat) {
-      notePreserveChatForUrl(nextTabUrl ?? lastAgentNavigation?.url ?? null);
+      navigationRuntime.notePreserveChatForUrl(
+        nextTabUrl ?? navigationRuntime.getLastAgentNavigationUrl(),
+      );
     }
     const previousTabId = activeTabId;
     activeTabId = nextTabId;
@@ -1960,7 +1892,7 @@ function updateControls(state: UiState) {
   } else if (navigation.kind === "url") {
     activeTabUrl = nextTabUrl;
     if (navigation.preserveChat) {
-      notePreserveChatForUrl(nextTabUrl);
+      navigationRuntime.notePreserveChatForUrl(nextTabUrl);
     } else if (navigation.shouldClearChat) {
       void clearChatHistoryForActiveTab();
       resetChatState();
@@ -2070,9 +2002,9 @@ function updateControls(state: UiState) {
         currentSourceUrl: panelState.currentSource.url,
       })
     ) {
-      const preserveChat = isRecentAgentNavigation(activeTabId, state.tab.url);
+      const preserveChat = navigationRuntime.isRecentAgentNavigation(activeTabId, state.tab.url);
       if (preserveChat) {
-        notePreserveChatForUrl(state.tab.url);
+        navigationRuntime.notePreserveChatForUrl(state.tab.url);
       }
       panelState.currentSource = null;
       currentRunTabId = null;
@@ -2489,8 +2421,8 @@ async function runAgentLoop() {
     executeToolCall: async (call) => (await executeToolCall(call)) as ToolResultMessage,
     getAutomationToolNames,
     hasDebuggerPermission: () => chrome.permissions.contains({ permissions: ["debugger"] }),
-    markAgentNavigationIntent,
-    markAgentNavigationResult,
+    markAgentNavigationIntent: navigationRuntime.markAgentNavigationIntent,
+    markAgentNavigationResult: navigationRuntime.markAgentNavigationResult,
     scrollToBottom,
     summaryMarkdown: panelState.summaryMarkdown,
     wrapMessage,
