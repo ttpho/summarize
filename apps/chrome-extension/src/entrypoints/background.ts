@@ -12,6 +12,12 @@ import { ensureChatExtract, primeMediaHint, type CachedExtract } from "./backgro
 import { createHoverController, type HoverToBg } from "./background/hover-controller";
 import { bindBackgroundListeners } from "./background/listeners";
 import { handlePanelAgentRequest, handlePanelChatHistoryRequest } from "./background/panel-chat";
+import {
+  handlePanelClosed,
+  handlePanelReady,
+  handlePanelSetAuto,
+  handlePanelSetLength,
+} from "./background/panel-session-actions";
 import { createPanelSessionStore, type PanelSession } from "./background/panel-session-store";
 import { handlePanelSlidesContextRequest } from "./background/panel-slides-context";
 import { resolvePanelState, type PanelUiState } from "./background/panel-state";
@@ -250,29 +256,20 @@ export default defineBackground(() => {
 
     switch (type) {
       case "panel:ready":
-        session.panelOpen = true;
-        session.panelLastPingAt = Date.now();
-        session.lastSummarizedUrl = null;
-        session.inflightUrl = null;
-        session.runController?.abort();
-        session.runController = null;
-        session.agentController?.abort();
-        session.agentController = null;
-        session.daemonRecovery.clearPending();
-        void emitState(session, "");
-        void summarizeActiveTab(session, "panel-open");
+        handlePanelReady(session, {
+          emitState: () => {
+            void emitState(session, "");
+          },
+          summarizeActiveTab: (reason) => {
+            void summarizeActiveTab(session, reason);
+          },
+        });
         break;
       case "panel:closed":
-        session.panelOpen = false;
-        session.panelLastPingAt = 0;
-        session.runController?.abort();
-        session.runController = null;
-        session.agentController?.abort();
-        session.agentController = null;
-        session.lastSummarizedUrl = null;
-        session.inflightUrl = null;
-        session.daemonRecovery.clearPending();
-        void panelSessionStore.clearCachedExtractsForWindow(session.windowId);
+        handlePanelClosed(session, {
+          clearCachedExtractsForWindow: (windowId) =>
+            panelSessionStore.clearCachedExtractsForWindow(windowId),
+        });
         break;
       case "panel:summarize":
         void summarizeActiveTab(
@@ -443,19 +440,31 @@ export default defineBackground(() => {
         break;
       case "panel:setAuto":
         void (async () => {
-          await patchSettings({ autoSummarize: (raw as { value: boolean }).value });
-          void emitState(session, "");
-          if ((raw as { value: boolean }).value) void summarizeActiveTab(session, "auto-enabled");
+          await handlePanelSetAuto({
+            value: (raw as { value: boolean }).value,
+            patchSettings,
+            emitState: () => {
+              void emitState(session, "");
+            },
+            summarizeActiveTab: (reason) => {
+              void summarizeActiveTab(session, reason);
+            },
+          });
         })();
         break;
       case "panel:setLength":
         void (async () => {
-          const next = (raw as { value: string }).value;
-          const current = await loadSettings();
-          if (current.length === next) return;
-          await patchSettings({ length: next });
-          void emitState(session, "");
-          void summarizeActiveTab(session, "length-change");
+          await handlePanelSetLength({
+            value: (raw as { value: string }).value,
+            loadSettings,
+            patchSettings,
+            emitState: () => {
+              void emitState(session, "");
+            },
+            summarizeActiveTab: (reason) => {
+              void summarizeActiveTab(session, reason);
+            },
+          });
         })();
         break;
       case "panel:slides-context":
