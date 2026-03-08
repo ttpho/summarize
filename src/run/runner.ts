@@ -3,7 +3,6 @@ import { CommanderError } from "commander";
 import { type CacheState } from "../cache.js";
 import type { ExecFileFn } from "../markitdown.js";
 import type { FixedModelSpec } from "../model-spec.js";
-import { resolveSlideSettings } from "../slides/index.js";
 import {
   createThemeRenderer,
   resolveThemeNameFromSources,
@@ -31,6 +30,7 @@ import { createRunMetrics } from "./run-metrics.js";
 import { resolveModelSelection } from "./run-models.js";
 import { resolveDesiredOutputTokens } from "./run-output.js";
 import { resolveStreamSettings } from "./run-stream.js";
+import { createRunnerFlowContexts } from "./runner-contexts.js";
 import { resolveRunnerFlags } from "./runner-flags.js";
 import {
   applyWidthOverride,
@@ -39,6 +39,7 @@ import {
   prepareRunEnvironment,
   resolvePromptOverride,
 } from "./runner-setup.js";
+import { resolveRunnerSlidesSettings } from "./runner-slides.js";
 import { handleSlidesCliRequest } from "./slides-cli.js";
 import { createTempFileFromStdin } from "./stdin-temp-file.js";
 import { createSummaryEngine } from "./summary-engine.js";
@@ -273,51 +274,12 @@ export async function runCli(
     promptOverride = config.prompt.trim();
   }
 
-  const slidesExplicitlySet = normalizedArgv.some(
-    (arg) => arg === "--slides" || arg === "--no-slides" || arg.startsWith("--slides="),
-  );
-  const slidesOcrExplicitlySet = normalizedArgv.some(
-    (arg) => arg === "--slides-ocr" || arg === "--no-slides-ocr" || arg.startsWith("--slides-ocr="),
-  );
-  const slidesDirExplicitlySet = normalizedArgv.some(
-    (arg) => arg === "--slides-dir" || arg.startsWith("--slides-dir="),
-  );
-  const slidesSceneThresholdExplicitlySet = normalizedArgv.some(
-    (arg) => arg === "--slides-scene-threshold" || arg.startsWith("--slides-scene-threshold="),
-  );
-  const slidesMaxExplicitlySet = normalizedArgv.some(
-    (arg) => arg === "--slides-max" || arg.startsWith("--slides-max="),
-  );
-  const slidesMinDurationExplicitlySet = normalizedArgv.some(
-    (arg) => arg === "--slides-min-duration" || arg.startsWith("--slides-min-duration="),
-  );
-  const slidesConfig = config?.slides;
-  const slidesSettings = resolveSlideSettings({
-    slides: slidesExplicitlySet
-      ? program.opts().slides
-      : (slidesConfig?.enabled ?? program.opts().slides),
-    slidesOcr: slidesOcrExplicitlySet
-      ? program.opts().slidesOcr
-      : (slidesConfig?.ocr ?? program.opts().slidesOcr),
-    slidesDir: slidesDirExplicitlySet
-      ? program.opts().slidesDir
-      : (slidesConfig?.dir ?? program.opts().slidesDir),
-    slidesSceneThreshold: slidesSceneThresholdExplicitlySet
-      ? program.opts().slidesSceneThreshold
-      : (slidesConfig?.sceneThreshold ?? program.opts().slidesSceneThreshold),
-    slidesSceneThresholdExplicit:
-      slidesSceneThresholdExplicitlySet || typeof slidesConfig?.sceneThreshold === "number",
-    slidesMax: slidesMaxExplicitlySet
-      ? program.opts().slidesMax
-      : (slidesConfig?.max ?? program.opts().slidesMax),
-    slidesMinDuration: slidesMinDurationExplicitlySet
-      ? program.opts().slidesMinDuration
-      : (slidesConfig?.minDuration ?? program.opts().slidesMinDuration),
-    cwd: process.cwd(),
+  const slidesSettings = resolveRunnerSlidesSettings({
+    normalizedArgv,
+    programOpts: program.opts() as Record<string, unknown>,
+    config,
+    inputKind: inputTarget.kind,
   });
-  if (slidesSettings && inputTarget.kind !== "url") {
-    throw new Error("--slides is only supported for URL inputs");
-  }
   const transcriptTimestamps = Boolean(program.opts().timestamps) || Boolean(slidesSettings);
 
   const lengthInstruction =
@@ -565,115 +527,11 @@ export async function runCli(
       },
     };
 
-    const summarizeAsset = (args: Parameters<typeof summarizeAssetFlow>[1]) =>
-      summarizeAssetFlow(assetSummaryContext, args);
-
-    const summarizeMediaFile = (args: Parameters<typeof summarizeMediaFileImpl>[1]) =>
-      summarizeMediaFileImpl(assetSummaryContext, args);
-
-    const assetInputContext = {
-      env,
-      envForRun,
-      stderr,
-      progressEnabled,
-      timeoutMs,
-      trackedFetch,
-      summarizeAsset,
-      summarizeMediaFile,
-      setClearProgressBeforeStdout,
-      clearProgressIfCurrent,
-    };
-
-    if (inputTarget.kind === "stdin") {
-      const stdinTempFile = await createTempFileFromStdin({
-        stream: stdin ?? process.stdin,
-      });
-      try {
-        const stdinInputTarget = { kind: "file" as const, filePath: stdinTempFile.filePath };
-        if (await handleFileInput(assetInputContext, stdinInputTarget)) {
-          return;
-        }
-        throw new Error("Failed to process stdin input");
-      } finally {
-        await stdinTempFile.cleanup();
-      }
-    }
-
-    if (await handleFileInput(assetInputContext, inputTarget)) {
-      return;
-    }
-    if (
-      url &&
-      (await withUrlAsset(assetInputContext, url, isYoutubeUrl, async ({ loaded, spinner }) => {
-        if (extractMode) {
-          if (progressEnabled) spinner.setText(renderSpinnerStatus("Extracting text"));
-          const extracted = await extractAssetContent({
-            ctx: {
-              env,
-              envForRun,
-              execFileImpl,
-              timeoutMs,
-              preprocessMode,
-            },
-            attachment: loaded.attachment,
-          });
-          await outputExtractedAsset({
-            io: { env, envForRun, stdout, stderr },
-            flags: {
-              timeoutMs,
-              preprocessMode,
-              format,
-              plain,
-              json,
-              metricsEnabled,
-              metricsDetailed,
-              shouldComputeReport,
-              runStartedAtMs,
-              verboseColor,
-            },
-            hooks: {
-              clearProgressForStdout,
-              restoreProgressAfterStdout,
-              buildReport,
-              estimateCostUsd,
-            },
-            url,
-            sourceLabel: loaded.sourceLabel,
-            attachment: loaded.attachment,
-            extracted,
-            apiStatus: {
-              xaiApiKey,
-              apiKey,
-              openrouterApiKey,
-              apifyToken,
-              firecrawlConfigured,
-              googleConfigured,
-              anthropicConfigured,
-            },
-          });
-          return;
-        }
-
-        if (progressEnabled) spinner.setText(renderSpinnerStatus("Summarizing"));
-        await summarizeAsset({
-          sourceKind: "asset-url",
-          sourceLabel: loaded.sourceLabel,
-          attachment: loaded.attachment,
-          onModelChosen: (modelId) => {
-            if (!progressEnabled) return;
-            spinner.setText(renderSpinnerStatusWithModel("Summarizing", modelId));
-          },
-        });
-      }))
-    ) {
-      return;
-    }
-
-    if (!url) {
-      throw new Error("Only HTTP and HTTPS URLs can be summarized");
-    }
-
-    const urlFlowContext = {
+    const { summarizeAsset, assetInputContext, urlFlowContext } = createRunnerFlowContexts({
+      assetSummaryContext,
+      summarizeMediaFileImpl,
+      cacheState,
+      mediaCache,
       io: {
         env,
         envForRun,
@@ -763,28 +621,104 @@ export async function runCli(
         getLiteLlmCatalog,
         llmCalls,
       },
-      cache: cacheState,
-      mediaCache,
-      hooks: {
-        onModelChosen: null,
-        onExtracted: null,
-        onSlidesExtracted: null,
-        onSlidesProgress: null,
-        onLinkPreviewProgress: null,
-        onSummaryCached: null,
-        setTranscriptionCost,
-        summarizeAsset,
-        writeViaFooter,
-        clearProgressForStdout,
-        restoreProgressAfterStdout,
-        setClearProgressBeforeStdout,
-        clearProgressIfCurrent,
-        buildReport,
-        estimateCostUsd,
-        onSlideChunk: undefined,
-        onSlidesDone: null,
-      },
-    };
+      setTranscriptionCost,
+      writeViaFooter,
+      clearProgressForStdout,
+      restoreProgressAfterStdout,
+      setClearProgressBeforeStdout,
+      clearProgressIfCurrent,
+      buildReport,
+      estimateCostUsd,
+    });
+
+    if (inputTarget.kind === "stdin") {
+      const stdinTempFile = await createTempFileFromStdin({
+        stream: stdin ?? process.stdin,
+      });
+      try {
+        const stdinInputTarget = { kind: "file" as const, filePath: stdinTempFile.filePath };
+        if (await handleFileInput(assetInputContext, stdinInputTarget)) {
+          return;
+        }
+        throw new Error("Failed to process stdin input");
+      } finally {
+        await stdinTempFile.cleanup();
+      }
+    }
+
+    if (await handleFileInput(assetInputContext, inputTarget)) {
+      return;
+    }
+    if (
+      url &&
+      (await withUrlAsset(assetInputContext, url, isYoutubeUrl, async ({ loaded, spinner }) => {
+        if (extractMode) {
+          if (progressEnabled) spinner.setText(renderSpinnerStatus("Extracting text"));
+          const extracted = await extractAssetContent({
+            ctx: {
+              env,
+              envForRun,
+              execFileImpl,
+              timeoutMs,
+              preprocessMode,
+            },
+            attachment: loaded.attachment,
+          });
+          await outputExtractedAsset({
+            io: { env, envForRun, stdout, stderr },
+            flags: {
+              timeoutMs,
+              preprocessMode,
+              format,
+              plain,
+              json,
+              metricsEnabled,
+              metricsDetailed,
+              shouldComputeReport,
+              runStartedAtMs,
+              verboseColor,
+            },
+            hooks: {
+              clearProgressForStdout,
+              restoreProgressAfterStdout,
+              buildReport,
+              estimateCostUsd,
+            },
+            url,
+            sourceLabel: loaded.sourceLabel,
+            attachment: loaded.attachment,
+            extracted,
+            apiStatus: {
+              xaiApiKey,
+              apiKey,
+              openrouterApiKey,
+              apifyToken,
+              firecrawlConfigured,
+              googleConfigured,
+              anthropicConfigured,
+            },
+          });
+          return;
+        }
+
+        if (progressEnabled) spinner.setText(renderSpinnerStatus("Summarizing"));
+        await summarizeAsset({
+          sourceKind: "asset-url",
+          sourceLabel: loaded.sourceLabel,
+          attachment: loaded.attachment,
+          onModelChosen: (modelId) => {
+            if (!progressEnabled) return;
+            spinner.setText(renderSpinnerStatusWithModel("Summarizing", modelId));
+          },
+        });
+      }))
+    ) {
+      return;
+    }
+
+    if (!url) {
+      throw new Error("Only HTTP and HTTPS URLs can be summarized");
+    }
 
     await runUrlFlow({ ctx: urlFlowContext, url, isYoutubeUrl });
   } finally {
