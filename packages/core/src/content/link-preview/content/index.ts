@@ -58,6 +58,7 @@ export async function fetchLinkContent(
     transcription: deps.transcription ?? null,
     falApiKey: deps.falApiKey,
     groqApiKey: deps.groqApiKey,
+    assemblyaiApiKey: deps.assemblyaiApiKey,
     geminiApiKey: deps.geminiApiKey,
     openaiApiKey: deps.openaiApiKey,
   });
@@ -82,7 +83,7 @@ export async function fetchLinkContent(
     });
     if (!transcriptionAvailability.hasAnyProvider) {
       throw new Error(
-        "Spotify episode transcription requires a transcription provider (install whisper-cpp or set GROQ_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY, or FAL_KEY); otherwise you may only get a captcha/recaptcha HTML page.",
+        "Spotify episode transcription requires a transcription provider (install whisper-cpp or set GROQ_API_KEY, ASSEMBLYAI_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY, or FAL_KEY); otherwise you may only get a captcha/recaptcha HTML page.",
       );
     }
 
@@ -145,7 +146,7 @@ export async function fetchLinkContent(
     });
     if (!transcriptionAvailability.hasAnyProvider) {
       throw new Error(
-        "Apple Podcasts transcription requires a transcription provider (install whisper-cpp or set GROQ_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY, or FAL_KEY); otherwise you may only get a slow/blocked HTML page.",
+        "Apple Podcasts transcription requires a transcription provider (install whisper-cpp or set GROQ_API_KEY, ASSEMBLYAI_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY, or FAL_KEY); otherwise you may only get a slow/blocked HTML page.",
       );
     }
 

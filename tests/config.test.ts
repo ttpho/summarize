@@ -84,6 +84,21 @@ describe("config loading", () => {
     });
   });
 
+  it("accepts groq and assemblyai legacy apiKeys", () => {
+    const { root } = writeJsonConfig({
+      apiKeys: {
+        groq: "gsk-test",
+        assemblyai: "aai-test",
+      },
+    });
+
+    const result = loadSummarizeConfig({ env: { HOME: root } });
+    expect(result.config?.apiKeys).toEqual({
+      groq: "gsk-test",
+      assemblyai: "aai-test",
+    });
+  });
+
   it('supports model shorthand strings ("auto", preset, provider/model)', () => {
     const { root, configPath } = writeJsonConfig({ model: "auto" });
     expect(loadSummarizeConfig({ env: { HOME: root } }).config).toEqual({

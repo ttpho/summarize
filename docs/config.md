@@ -107,6 +107,7 @@ Set any env var in config (process env still wins):
 ```json
 {
   "env": {
+    "ASSEMBLYAI_API_KEY": "...",
     "OPENAI_API_KEY": "sk-...",
     "OPENROUTER_API_KEY": "sk-or-...",
     "FIRECRAWL_API_KEY": "...",
@@ -121,6 +122,8 @@ Legacy shortcut (still supported):
 {
   "apiKeys": {
     "openai": "sk-...",
+    "groq": "gsk-...",
+    "assemblyai": "...",
     "anthropic": "sk-ant-...",
     "google": "...",
     "openrouter": "sk-or-...",

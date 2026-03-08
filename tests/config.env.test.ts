@@ -86,6 +86,8 @@ describe("config env", () => {
           zai: "sk-zai",
           apify: "apify-token",
           fal: "fal-key",
+          groq: "groq-key",
+          assemblyai: "aai-key",
         },
       },
     });
@@ -95,6 +97,8 @@ describe("config env", () => {
     expect(merged.Z_AI_API_KEY).toBe("sk-zai");
     expect(merged.APIFY_API_TOKEN).toBe("apify-token");
     expect(merged.FAL_KEY).toBe("fal-key");
+    expect(merged.GROQ_API_KEY).toBe("groq-key");
+    expect(merged.ASSEMBLYAI_API_KEY).toBe("aai-key");
   });
 
   it("prefers explicit env map over legacy apiKeys", () => {

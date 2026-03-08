@@ -197,7 +197,7 @@ export async function tryYtDlpTranscript(args: {
 
   if (mode === "no-auto" && !flow.canRunYtDlp) {
     throw new Error(
-      "--youtube no-auto requires yt-dlp and a transcription provider (whisper-cpp, GROQ_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY, or FAL_KEY) for fallback",
+      "--youtube no-auto requires yt-dlp and a transcription provider (whisper-cpp, GROQ_API_KEY, ASSEMBLYAI_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY, or FAL_KEY) for fallback",
     );
   }
 

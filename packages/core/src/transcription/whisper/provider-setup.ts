@@ -4,12 +4,13 @@ export const DEFAULT_GEMINI_TRANSCRIPTION_MODEL = "gemini-2.5-flash";
 export const GEMINI_TRANSCRIPTION_MODEL_ENV = "SUMMARIZE_GEMINI_TRANSCRIPTION_MODEL";
 export const TRANSCRIPTION_PROVIDER_ENV_LIST = [
   "GROQ_API_KEY",
+  "ASSEMBLYAI_API_KEY",
   "GEMINI_API_KEY",
   "OPENAI_API_KEY",
   "FAL_KEY",
 ] as const;
 export const TRANSCRIPTION_PROVIDER_ENV_LABEL =
-  "GROQ_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY, or FAL_KEY";
+  "GROQ_API_KEY, ASSEMBLYAI_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY, or FAL_KEY";
 
 export function normalizeApiKey(raw: string | null | undefined): string | null {
   const trimmed = typeof raw === "string" ? raw.trim() : "";
@@ -31,6 +32,58 @@ export function resolveGeminiApiKey({
     normalizeApiKey(source.GOOGLE_GENERATIVE_AI_API_KEY) ??
     normalizeApiKey(source.GOOGLE_API_KEY)
   );
+}
+
+export function resolveGroqApiKey({
+  env,
+  groqApiKey,
+}: {
+  env?: Env;
+  groqApiKey?: string | null;
+}): string | null {
+  const explicit = normalizeApiKey(groqApiKey);
+  if (explicit) return explicit;
+  const source = env ?? process.env;
+  return normalizeApiKey(source.GROQ_API_KEY);
+}
+
+export function resolveAssemblyAiApiKey({
+  env,
+  assemblyaiApiKey,
+}: {
+  env?: Env;
+  assemblyaiApiKey?: string | null;
+}): string | null {
+  const explicit = normalizeApiKey(assemblyaiApiKey);
+  if (explicit) return explicit;
+  const source = env ?? process.env;
+  return normalizeApiKey(source.ASSEMBLYAI_API_KEY);
+}
+
+export function resolveOpenAiTranscriptionApiKey({
+  env,
+  openaiApiKey,
+}: {
+  env?: Env;
+  openaiApiKey?: string | null;
+}): string | null {
+  const explicit = normalizeApiKey(openaiApiKey);
+  if (explicit) return explicit;
+  const source = env ?? process.env;
+  return normalizeApiKey(source.OPENAI_API_KEY);
+}
+
+export function resolveFalApiKey({
+  env,
+  falApiKey,
+}: {
+  env?: Env;
+  falApiKey?: string | null;
+}): string | null {
+  const explicit = normalizeApiKey(falApiKey);
+  if (explicit) return explicit;
+  const source = env ?? process.env;
+  return normalizeApiKey(source.FAL_KEY);
 }
 
 export function resolveGeminiTranscriptionModel(env?: Env): string {

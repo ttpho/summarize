@@ -37,6 +37,7 @@ export async function transcribeMediaUrl({
   filenameHint,
   durationSecondsHint,
   groqApiKey,
+  assemblyaiApiKey,
   geminiApiKey,
   openaiApiKey,
   falApiKey,
@@ -50,6 +51,7 @@ export async function transcribeMediaUrl({
   filenameHint: string;
   durationSecondsHint: number | null;
   groqApiKey?: string | null;
+  assemblyaiApiKey?: string | null;
   geminiApiKey?: string | null;
   openaiApiKey?: string | null;
   falApiKey?: string | null;
@@ -65,6 +67,7 @@ export async function transcribeMediaUrl({
     env,
     transcription,
     groqApiKey,
+    assemblyaiApiKey,
     geminiApiKey,
     openaiApiKey,
     falApiKey,
@@ -131,6 +134,7 @@ export async function transcribeMediaUrl({
       mediaType,
       filename,
       groqApiKey: effectiveTranscription.groqApiKey,
+      assemblyaiApiKey: effectiveTranscription.assemblyaiApiKey,
       geminiApiKey: effectiveTranscription.geminiApiKey,
       openaiApiKey: effectiveTranscription.openaiApiKey,
       falApiKey: effectiveTranscription.falApiKey,
@@ -187,6 +191,7 @@ export async function transcribeMediaUrl({
       mediaType,
       filename,
       groqApiKey: effectiveTranscription.groqApiKey,
+      assemblyaiApiKey: effectiveTranscription.assemblyaiApiKey,
       geminiApiKey: effectiveTranscription.geminiApiKey,
       openaiApiKey: effectiveTranscription.openaiApiKey,
       falApiKey: effectiveTranscription.falApiKey,
@@ -247,6 +252,7 @@ export async function transcribeMediaUrl({
       mediaType,
       filename,
       groqApiKey: effectiveTranscription.groqApiKey,
+      assemblyaiApiKey: effectiveTranscription.assemblyaiApiKey,
       geminiApiKey: effectiveTranscription.geminiApiKey,
       openaiApiKey: effectiveTranscription.openaiApiKey,
       falApiKey: effectiveTranscription.falApiKey,

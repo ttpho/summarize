@@ -79,21 +79,40 @@ describe("transcription start helper", () => {
     expect(startInfo.modelId).toBe("google/gemini-2.5-flash");
   });
 
-  it("reports groq->gemini->openai when all preferred cloud fallbacks exist", async () => {
+  it("reports AssemblyAI when only an AssemblyAI key is present", async () => {
+    whisperMock.isWhisperCppReady.mockResolvedValue(false);
+    whisperMock.resolveWhisperCppModelNameForDisplay.mockResolvedValue(null);
+
+    const startInfo = await resolveTranscriptionStartInfo({
+      env: {},
+      groqApiKey: null,
+      assemblyaiApiKey: "AAI",
+      openaiApiKey: null,
+      falApiKey: null,
+    });
+
+    expect(startInfo.availability.hasAnyProvider).toBe(true);
+    expect(startInfo.availability.hasAssemblyAi).toBe(true);
+    expect(startInfo.providerHint).toBe("assemblyai");
+    expect(startInfo.modelId).toBe("assemblyai/universal-2");
+  });
+
+  it("reports groq->assemblyai->gemini->openai when all preferred cloud fallbacks exist", async () => {
     whisperMock.isWhisperCppReady.mockResolvedValue(false);
     whisperMock.resolveWhisperCppModelNameForDisplay.mockResolvedValue(null);
 
     const startInfo = await resolveTranscriptionStartInfo({
       env: {},
       groqApiKey: "GROQ",
+      assemblyaiApiKey: "AAI",
       geminiApiKey: "GEMINI",
       openaiApiKey: "OPENAI",
       falApiKey: null,
     });
 
-    expect(startInfo.providerHint).toBe("groq->gemini->openai");
+    expect(startInfo.providerHint).toBe("groq->assemblyai->gemini->openai");
     expect(startInfo.modelId).toBe(
-      "groq/whisper-large-v3-turbo->google/gemini-2.5-flash->whisper-1",
+      "groq/whisper-large-v3-turbo->assemblyai/universal-2->google/gemini-2.5-flash->whisper-1",
     );
   });
 

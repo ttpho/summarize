@@ -59,6 +59,7 @@ export async function summarizeMediaFile(
     ctx.env.GEMINI_API_KEY ?? ctx.env.GOOGLE_GENERATIVE_AI_API_KEY ?? ctx.env.GOOGLE_API_KEY;
   const openaiKey = ctx.env.OPENAI_API_KEY;
   const falKey = ctx.env.FAL_KEY;
+  const assemblyaiKey = ctx.env.ASSEMBLYAI_API_KEY;
 
   // Helper to check if a binary is available on PATH
   const isBinaryAvailable = async (binary: string): Promise<boolean> => {
@@ -82,7 +83,7 @@ export async function summarizeMediaFile(
     : await isBinaryAvailable("whisper-cli");
 
   const hasAnyTranscriptionProvider =
-    groqKey || geminiKey || openaiKey || falKey || hasLocalWhisper;
+    groqKey || assemblyaiKey || geminiKey || openaiKey || falKey || hasLocalWhisper;
 
   if (!hasAnyTranscriptionProvider) {
     throw new Error(`Media file transcription requires one of the following:
@@ -93,13 +94,16 @@ export async function summarizeMediaFile(
 2. Gemini audio transcription:
    Set GEMINI_API_KEY=...
 
-3. OpenAI Whisper:
+3. AssemblyAI transcription:
+   Set ASSEMBLYAI_API_KEY=...
+
+4. OpenAI Whisper:
    Set OPENAI_API_KEY=sk-...
 
-4. FAL Whisper:
+5. FAL Whisper:
    Set FAL_KEY=...
 
-5. Local whisper.cpp (recommended, free):
+6. Local whisper.cpp (recommended, free):
    brew install whisper-cpp
    Ensure whisper-cli is on your PATH (or set SUMMARIZE_WHISPER_CPP_BINARY)
 
@@ -190,6 +194,7 @@ See: https://github.com/openai/whisper for setup details`);
       env: ctx.envForRun,
       falApiKey: falKey,
       groqApiKey: groqKey,
+      assemblyaiApiKey: assemblyaiKey ?? ctx.apiStatus.assemblyaiApiKey,
       openaiApiKey: openaiKey,
     },
     scrapeWithFirecrawl: firecrawlScraper,

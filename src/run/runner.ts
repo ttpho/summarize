@@ -409,6 +409,7 @@ export async function runCli(
     openrouterApiKey,
     openrouterConfigured,
     groqApiKey,
+    assemblyaiApiKey,
     openaiTranscriptionKey,
     xaiApiKey,
     googleApiKey,
@@ -735,6 +736,7 @@ export async function runCli(
         zaiBaseUrl,
         nvidiaApiKey,
         nvidiaBaseUrl,
+        assemblyaiApiKey,
       },
     };
 
@@ -929,6 +931,7 @@ export async function runCli(
           ytDlpCookiesFromBrowser,
           falApiKey,
           groqApiKey,
+          assemblyaiApiKey,
           openaiTranscriptionKey,
         },
         summaryEngine,

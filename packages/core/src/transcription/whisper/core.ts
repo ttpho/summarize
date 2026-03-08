@@ -21,6 +21,7 @@ type Env = Record<string, string | undefined>;
 
 type MediaRequest = {
   groqApiKey: string | null;
+  assemblyaiApiKey?: string | null;
   geminiApiKey?: string | null;
   openaiApiKey: string | null;
   falApiKey: string | null;
@@ -35,6 +36,7 @@ export async function transcribeMediaWithWhisper({
   filename,
   groqApiKey,
   skipGroq = false,
+  assemblyaiApiKey = null,
   geminiApiKey = null,
   openaiApiKey,
   falApiKey,
@@ -69,7 +71,7 @@ export async function transcribeMediaWithWhisper({
 
   if (groqError) {
     notes.push(
-      `Groq transcription failed; falling back to local/Gemini/OpenAI: ${groqError.message}`,
+      `Groq transcription failed; falling back to local/AssemblyAI/Gemini/OpenAI: ${groqError.message}`,
     );
   }
 
@@ -101,6 +103,7 @@ export async function transcribeMediaWithWhisper({
     notes,
     groqApiKey,
     groqError,
+    assemblyaiApiKey,
     geminiApiKey,
     openaiApiKey,
     falApiKey,
@@ -118,6 +121,7 @@ export async function transcribeMediaWithWhisper({
             mediaType,
             filename,
             groqApiKey,
+            assemblyaiApiKey,
             geminiApiKey,
             openaiApiKey,
             falApiKey,
@@ -134,6 +138,7 @@ export async function transcribeMediaFileWithWhisper({
   mediaType,
   filename,
   groqApiKey,
+  assemblyaiApiKey = null,
   geminiApiKey = null,
   openaiApiKey,
   falApiKey,
@@ -158,6 +163,7 @@ export async function transcribeMediaFileWithWhisper({
       mediaType,
       filename,
       groqApiKey,
+      assemblyaiApiKey,
       geminiApiKey,
       openaiApiKey,
       falApiKey,
@@ -197,6 +203,7 @@ export async function transcribeMediaFileWithWhisper({
     notes,
     groqApiKey,
     groqError,
+    assemblyaiApiKey,
     geminiApiKey,
     openaiApiKey,
     falApiKey,
@@ -216,43 +223,13 @@ export async function transcribeMediaFileWithWhisper({
             filename,
             groqApiKey,
             skipGroq: skipGroqInNestedCalls,
+            assemblyaiApiKey,
             geminiApiKey,
             openaiApiKey,
             falApiKey,
             env,
           }),
       }),
-    transcribePartialFileHead: ({ bytes, mediaType, filename }) =>
-      transcribeMediaWithWhisper({
-        bytes,
-        mediaType,
-        filename,
-        groqApiKey,
-        skipGroq: skipGroqInNestedCalls,
-        geminiApiKey,
-        openaiApiKey,
-        falApiKey,
-        env,
-      }),
-    transcribeFullFileBytes: ({ bytes, mediaType, filename }) => {
-      onProgress?.({
-        partIndex: null,
-        parts: null,
-        processedDurationSeconds: null,
-        totalDurationSeconds,
-      });
-      return transcribeMediaWithWhisper({
-        bytes,
-        mediaType,
-        filename,
-        groqApiKey,
-        skipGroq: skipGroqInNestedCalls,
-        geminiApiKey,
-        openaiApiKey,
-        falApiKey,
-        env,
-      });
-    },
   });
 }
 
@@ -324,6 +301,7 @@ async function transcribeGroqFileFirst({
   mediaType,
   filename,
   groqApiKey,
+  assemblyaiApiKey,
   geminiApiKey,
   openaiApiKey,
   falApiKey,
@@ -337,6 +315,7 @@ async function transcribeGroqFileFirst({
   mediaType: string;
   filename: string | null;
   groqApiKey: string;
+  assemblyaiApiKey: string | null;
   geminiApiKey: string | null;
   openaiApiKey: string | null;
   falApiKey: string | null;
@@ -353,12 +332,14 @@ async function transcribeGroqFileFirst({
       const text = await transcribeWithGroq(fileBytes, mediaType, filename, groqApiKey);
       if (text) return { text, provider: "groq", error: null, notes };
       const error = new Error("Groq transcription returned empty text");
-      notes.push("Groq transcription returned empty text; falling back to local/OpenAI");
+      notes.push(
+        "Groq transcription returned empty text; falling back to local/AssemblyAI/Gemini/OpenAI",
+      );
       return { text: null, provider: "groq", error, notes };
     } catch (error) {
       const wrapped = wrapError("Groq transcription failed", error);
       notes.push(
-        `Groq transcription failed; falling back to local/OpenAI: ${
+        `Groq transcription failed; falling back to local/AssemblyAI/Gemini/OpenAI: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -386,6 +367,7 @@ async function transcribeGroqFileFirst({
         mediaType: "audio/mpeg",
         filename,
         groqApiKey,
+        assemblyaiApiKey,
         geminiApiKey,
         openaiApiKey,
         falApiKey,
@@ -396,7 +378,7 @@ async function transcribeGroqFileFirst({
   if (chunked.text) return { ...chunked, notes };
   const error = chunked.error ?? new Error("Groq chunked transcription failed");
   notes.push(
-    `Groq chunked transcription failed; falling back to local/Gemini/OpenAI: ${error.message}`,
+    `Groq chunked transcription failed; falling back to local/AssemblyAI/Gemini/OpenAI: ${error.message}`,
   );
   return { text: null, provider: "groq", error, notes };
 }

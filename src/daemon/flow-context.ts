@@ -166,6 +166,7 @@ export function createDaemonUrlFlowContext(args: DaemonUrlFlowContextArgs): UrlF
     openrouterApiKey,
     openrouterConfigured,
     groqApiKey,
+    assemblyaiApiKey,
     openaiTranscriptionKey,
     xaiApiKey,
     googleApiKey,
@@ -352,6 +353,7 @@ export function createDaemonUrlFlowContext(args: DaemonUrlFlowContextArgs): UrlF
       zaiApiKey,
       zaiBaseUrl,
       nvidiaBaseUrl,
+      assemblyaiApiKey,
     },
   };
 
@@ -438,6 +440,7 @@ export function createDaemonUrlFlowContext(args: DaemonUrlFlowContextArgs): UrlF
         ytDlpCookiesFromBrowser,
         falApiKey,
         groqApiKey,
+        assemblyaiApiKey,
         openaiTranscriptionKey,
       },
       summaryEngine,

@@ -226,6 +226,7 @@ export async function runUrlFlow({
       env: io.envForRun,
       falApiKey: model.apiStatus.falApiKey,
       groqApiKey: model.apiStatus.groqApiKey,
+      assemblyaiApiKey: model.apiStatus.assemblyaiApiKey,
       openaiApiKey: model.apiStatus.openaiTranscriptionKey,
     },
     scrapeWithFirecrawl,

@@ -28,25 +28,14 @@ export const ProgressKind = {
   BirdDone: "bird-done",
 } as const;
 
+export type CloudTranscriptionProviderHint = "groq" | "assemblyai" | "gemini" | "openai" | "fal";
+
 export type TranscriptionProviderHint =
   | "cpp"
   | "onnx"
-  | "groq"
-  | "groq->gemini"
-  | "groq->openai"
-  | "groq->fal"
-  | "groq->gemini->openai"
-  | "groq->gemini->fal"
-  | "groq->openai->fal"
-  | "groq->gemini->openai->fal"
-  | "gemini"
-  | "gemini->openai"
-  | "gemini->fal"
-  | "gemini->openai->fal"
-  | "openai"
-  | "fal"
-  | "openai->fal"
-  | "unknown";
+  | "unknown"
+  | CloudTranscriptionProviderHint
+  | `${CloudTranscriptionProviderHint}->${string}`;
 
 /** Public progress events emitted by link preview fetchers. */
 export type LinkPreviewProgressEvent =
@@ -196,6 +185,7 @@ export interface LinkPreviewDeps {
   transcription?: TranscriptionConfig | null;
   falApiKey?: string | null;
   groqApiKey?: string | null;
+  assemblyaiApiKey?: string | null;
   geminiApiKey?: string | null;
   openaiApiKey?: string | null;
   convertHtmlToMarkdown: ConvertHtmlToMarkdown | null;

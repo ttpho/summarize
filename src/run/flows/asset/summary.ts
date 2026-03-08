@@ -281,6 +281,7 @@ export type AssetSummaryContext = {
     zaiApiKey: string | null;
     zaiBaseUrl: string;
     nvidiaBaseUrl: string;
+    assemblyaiApiKey: string | null;
   };
 };
 

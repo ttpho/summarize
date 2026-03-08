@@ -96,6 +96,8 @@ export type ApiKeysConfig = {
   apify?: string;
   firecrawl?: string;
   fal?: string;
+  groq?: string;
+  assemblyai?: string;
 };
 
 export type EnvConfig = Record<string, string>;
@@ -266,6 +268,8 @@ function resolveLegacyApiKeysEnv(apiKeys: ApiKeysConfig | undefined): EnvConfig 
   if (typeof apiKeys.apify === "string") mapped.APIFY_API_TOKEN = apiKeys.apify;
   if (typeof apiKeys.firecrawl === "string") mapped.FIRECRAWL_API_KEY = apiKeys.firecrawl;
   if (typeof apiKeys.fal === "string") mapped.FAL_KEY = apiKeys.fal;
+  if (typeof apiKeys.groq === "string") mapped.GROQ_API_KEY = apiKeys.groq;
+  if (typeof apiKeys.assemblyai === "string") mapped.ASSEMBLYAI_API_KEY = apiKeys.assemblyai;
   return mapped;
 }
 
@@ -1216,6 +1220,8 @@ export function loadSummarizeConfig({ env }: { env: Record<string, string | unde
       "apify",
       "firecrawl",
       "fal",
+      "groq",
+      "assemblyai",
     ];
     for (const [key, val] of Object.entries(value)) {
       const k = key.trim().toLowerCase();

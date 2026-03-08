@@ -35,6 +35,7 @@ type YtDlpRequest = {
   transcription?: Partial<TranscriptionConfig> | null;
   env?: Record<string, string | undefined>;
   groqApiKey?: string | null;
+  assemblyaiApiKey?: string | null;
   geminiApiKey?: string | null;
   openaiApiKey?: string | null;
   falApiKey?: string | null;
@@ -56,6 +57,7 @@ export const fetchTranscriptWithYtDlp = async ({
   transcription,
   env,
   groqApiKey,
+  assemblyaiApiKey,
   geminiApiKey,
   openaiApiKey,
   falApiKey,
@@ -71,6 +73,7 @@ export const fetchTranscriptWithYtDlp = async ({
     env,
     transcription,
     groqApiKey,
+    assemblyaiApiKey,
     geminiApiKey,
     openaiApiKey,
     falApiKey,
@@ -192,6 +195,7 @@ export const fetchTranscriptWithYtDlp = async ({
       mediaType: "audio/mpeg",
       filename: "audio.mp3",
       groqApiKey: effectiveTranscription.groqApiKey,
+      assemblyaiApiKey: effectiveTranscription.assemblyaiApiKey,
       geminiApiKey: effectiveTranscription.geminiApiKey,
       openaiApiKey: effectiveTranscription.openaiApiKey,
       falApiKey: effectiveTranscription.falApiKey,

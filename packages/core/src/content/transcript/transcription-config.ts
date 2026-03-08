@@ -1,8 +1,15 @@
-import { resolveGeminiApiKey } from "../../transcription/whisper/provider-setup.js";
+import {
+  resolveAssemblyAiApiKey,
+  resolveFalApiKey,
+  resolveGeminiApiKey,
+  resolveGroqApiKey,
+  resolveOpenAiTranscriptionApiKey,
+} from "../../transcription/whisper/provider-setup.js";
 
 export type TranscriptionConfig = {
   env?: Record<string, string | undefined>;
   groqApiKey: string | null;
+  assemblyaiApiKey: string | null;
   geminiApiKey: string | null;
   openaiApiKey: string | null;
   falApiKey: string | null;
@@ -13,6 +20,7 @@ type TranscriptionConfigInput = {
   env?: Record<string, string | undefined>;
   transcription?: Partial<TranscriptionConfig> | null;
   groqApiKey?: string | null;
+  assemblyaiApiKey?: string | null;
   geminiApiKey?: string | null;
   openaiApiKey?: string | null;
   falApiKey?: string | null;
@@ -29,13 +37,26 @@ export function resolveTranscriptionConfig(input: TranscriptionConfigInput): Tra
   const env = fromObject?.env ?? input.env;
   return {
     env,
-    groqApiKey: normalizeKey(fromObject?.groqApiKey ?? input.groqApiKey),
+    groqApiKey: resolveGroqApiKey({
+      env,
+      groqApiKey: fromObject?.groqApiKey ?? input.groqApiKey,
+    }),
+    assemblyaiApiKey: resolveAssemblyAiApiKey({
+      env,
+      assemblyaiApiKey: fromObject?.assemblyaiApiKey ?? input.assemblyaiApiKey,
+    }),
     geminiApiKey: resolveGeminiApiKey({
       env,
       geminiApiKey: fromObject?.geminiApiKey ?? input.geminiApiKey,
     }),
-    openaiApiKey: normalizeKey(fromObject?.openaiApiKey ?? input.openaiApiKey),
-    falApiKey: normalizeKey(fromObject?.falApiKey ?? input.falApiKey),
+    openaiApiKey: resolveOpenAiTranscriptionApiKey({
+      env,
+      openaiApiKey: fromObject?.openaiApiKey ?? input.openaiApiKey,
+    }),
+    falApiKey: resolveFalApiKey({
+      env,
+      falApiKey: fromObject?.falApiKey ?? input.falApiKey,
+    }),
     geminiModel: normalizeKey(fromObject?.geminiModel ?? input.geminiModel),
   };
 }

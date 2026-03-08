@@ -90,7 +90,7 @@ export const fetchTranscript = async (
     if (transcript) return transcript;
   }
 
-  // Try yt-dlp (audio download + Groq/Gemini/OpenAI/FAL transcription) if mode is 'auto', 'no-auto', or 'yt-dlp'
+  // Try yt-dlp (audio download + Groq/AssemblyAI/Gemini/OpenAI/FAL transcription) if mode is 'auto', 'no-auto', or 'yt-dlp'
   if (mode === "yt-dlp" || mode === "no-auto" || (mode === "auto" && canRunYtDlp)) {
     const transcript = await tryYtDlpTranscript({ flow, mode });
     if (transcript) return transcript;

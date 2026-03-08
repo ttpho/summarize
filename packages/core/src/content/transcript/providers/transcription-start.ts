@@ -14,6 +14,7 @@ export type TranscriptionAvailability = {
   onnxReady: boolean;
   hasLocalWhisper: boolean;
   hasGroq: boolean;
+  hasAssemblyAi: boolean;
   hasGemini: boolean;
   hasOpenai: boolean;
   hasFal: boolean;
@@ -25,6 +26,7 @@ export async function resolveTranscriptionAvailability({
   env,
   transcription,
   groqApiKey,
+  assemblyaiApiKey,
   geminiApiKey,
   openaiApiKey,
   falApiKey,
@@ -32,6 +34,7 @@ export async function resolveTranscriptionAvailability({
   env?: Env;
   transcription?: Partial<TranscriptionConfig> | null;
   groqApiKey?: string | null;
+  assemblyaiApiKey?: string | null;
   geminiApiKey?: string | null;
   openaiApiKey?: string | null;
   falApiKey?: string | null;
@@ -40,6 +43,7 @@ export async function resolveTranscriptionAvailability({
     env,
     transcription,
     groqApiKey,
+    assemblyaiApiKey,
     geminiApiKey,
     openaiApiKey,
     falApiKey,
@@ -52,17 +56,19 @@ export async function resolveTranscriptionAvailability({
 
   const hasLocalWhisper = await isWhisperCppReady();
   const hasGroq = Boolean(effective.groqApiKey);
+  const hasAssemblyAi = Boolean(effective.assemblyaiApiKey);
   const hasGemini = Boolean(effective.geminiApiKey);
   const hasOpenai = Boolean(effective.openaiApiKey);
   const hasFal = Boolean(effective.falApiKey);
   const hasAnyProvider =
-    onnxReady || hasLocalWhisper || hasGroq || hasGemini || hasOpenai || hasFal;
+    onnxReady || hasLocalWhisper || hasGroq || hasAssemblyAi || hasGemini || hasOpenai || hasFal;
 
   return {
     preferredOnnxModel,
     onnxReady,
     hasLocalWhisper,
     hasGroq,
+    hasAssemblyAi,
     hasGemini,
     hasOpenai,
     hasFal,
@@ -75,6 +81,7 @@ export async function resolveTranscriptionStartInfo({
   env,
   transcription,
   groqApiKey,
+  assemblyaiApiKey,
   geminiApiKey,
   openaiApiKey,
   falApiKey,
@@ -82,6 +89,7 @@ export async function resolveTranscriptionStartInfo({
   env?: Env;
   transcription?: Partial<TranscriptionConfig> | null;
   groqApiKey?: string | null;
+  assemblyaiApiKey?: string | null;
   geminiApiKey?: string | null;
   openaiApiKey?: string | null;
   falApiKey?: string | null;
@@ -94,6 +102,7 @@ export async function resolveTranscriptionStartInfo({
     env,
     transcription,
     groqApiKey,
+    assemblyaiApiKey,
     geminiApiKey,
     openaiApiKey,
     falApiKey,
@@ -120,6 +129,7 @@ export async function resolveTranscriptionStartInfo({
 function resolveCloudModelId(availability: TranscriptionAvailability): string | null {
   const parts: string[] = [];
   if (availability.hasGroq) parts.push("groq/whisper-large-v3-turbo");
+  if (availability.hasAssemblyAi) parts.push("assemblyai/universal-2");
   if (availability.hasGemini) parts.push(`google/${availability.geminiModelId}`);
   if (availability.hasOpenai) parts.push("whisper-1");
   if (availability.hasFal) parts.push("fal-ai/wizper");
@@ -131,6 +141,7 @@ function resolveCloudProviderHint(
 ): TranscriptionProviderHint {
   const parts: string[] = [];
   if (availability.hasGroq) parts.push("groq");
+  if (availability.hasAssemblyAi) parts.push("assemblyai");
   if (availability.hasGemini) parts.push("gemini");
   if (availability.hasOpenai) parts.push("openai");
   if (availability.hasFal) parts.push("fal");

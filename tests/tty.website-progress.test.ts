@@ -215,6 +215,19 @@ describe("tty website progress", () => {
       kind: "transcript-whisper-start",
       url: "https://podcasts.example/episode",
       service: "podcast",
+      providerHint: "assemblyai",
+      modelId: "assemblyai/universal-2",
+      totalDurationSeconds: 25,
+      parts: null,
+    });
+    expect(setText).toHaveBeenLastCalledWith(
+      expect.stringContaining("AssemblyAI, assemblyai/universal-2"),
+    );
+
+    progress.onProgress({
+      kind: "transcript-whisper-start",
+      url: "https://podcasts.example/episode",
+      service: "podcast",
       providerHint: "gemini",
       modelId: "google/gemini-2.5-flash",
       totalDurationSeconds: 30,

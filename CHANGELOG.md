@@ -8,6 +8,7 @@
 
 ### Fixes
 
+- Transcription: add AssemblyAI as a first-class remote provider across direct media, podcast/RSS, and yt-dlp YouTube fallback; refactor remote fallback ordering, expand config/env support (`ASSEMBLYAI_API_KEY`, legacy `apiKeys.assemblyai`), and add AssemblyAI unit + live coverage (#126).
 - X/Twitter: prefer `xurl` for tweet extraction when installed, fall back to `bird`, preserve long-form/article text plus media URLs, add live `xurl` extraction/media coverage, and replace the stale dead-`bird` install tip with a current X CLI recommendation (#70).
 - Models: make daemon agent `artifacts` schemas Gemini-safe, improve Google empty-response handling with preview-to-stable fallback, and switch CLI/auto Gemini defaults away from brittle preview behavior (#82, #96).
 - Agents: expand model auto-resolution errors with checked models, missing env/CLI setup, and daemon restart guidance (#107).

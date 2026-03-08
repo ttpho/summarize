@@ -14,7 +14,7 @@ read_when:
 ## Transcript resolution order
 
 1. Embedded captions (VTT/JSON) when available.
-2. yt-dlp download + transcription (Groq first; then ONNX/local whisper.cpp; then Gemini/OpenAI/FAL fallback).
+2. yt-dlp download + transcription (Groq first; then ONNX/local whisper.cpp; then AssemblyAI/Gemini/OpenAI/FAL fallback).
 
 ## CLI behavior
 
@@ -25,7 +25,8 @@ read_when:
 - X/Twitter status URLs with detected video auto-switch to transcript-first (yt-dlp), even in auto mode.
 - X broadcasts (`/i/broadcasts/...`) are treated as media-only and go transcript-first by default.
 - Local media files are capped at 2 GB; remote media URLs are best-effort via yt-dlp (no explicit size limit).
-- Gemini transcription works with `GEMINI_API_KEY` / `GOOGLE_GENERATIVE_AI_API_KEY` / `GOOGLE_API_KEY`, and uses the Files API automatically for larger uploads.
+- Remote transcription providers: `ASSEMBLYAI_API_KEY`, `GEMINI_API_KEY` / `GOOGLE_GENERATIVE_AI_API_KEY` / `GOOGLE_API_KEY`, `OPENAI_API_KEY`, `FAL_KEY` (plus `GROQ_API_KEY` before local/remote fallback).
+- Gemini uses the Files API automatically for larger uploads.
 
 ## Chrome extension behavior
 

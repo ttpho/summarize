@@ -167,6 +167,7 @@ export function createTranscriptProgressRenderer({
     if (hint === "onnx") return "ONNX (Parakeet/Canary)";
     const labelForPart = (part: string, chained: boolean) => {
       if (part === "groq") return "Whisper/Groq";
+      if (part === "assemblyai") return "AssemblyAI";
       if (part === "gemini") return "Gemini";
       if (part === "openai") return "Whisper/OpenAI";
       if (part === "fal") return chained ? "FAL" : "Whisper/FAL";
@@ -177,6 +178,7 @@ export function createTranscriptProgressRenderer({
       return parts.map((part) => labelForPart(part, parts.length > 1)).join("→");
     }
     if (hint === "groq") return "Whisper/Groq";
+    if (hint === "assemblyai") return "AssemblyAI";
     if (hint === "gemini") return "Gemini";
     if (hint === "openai") return "Whisper/OpenAI";
     if (hint === "fal") return "Whisper/FAL";

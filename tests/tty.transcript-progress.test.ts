@@ -143,7 +143,7 @@ describe("tty transcript progress renderer", () => {
     vi.useRealTimers();
   });
 
-  it("renders Gemini chain labels generically", () => {
+  it("renders AssemblyAI/Gemini chain labels generically", () => {
     vi.useFakeTimers();
     vi.setSystemTime(5_000);
 
@@ -154,14 +154,15 @@ describe("tty transcript progress renderer", () => {
       kind: "transcript-whisper-start",
       url: "https://example.com",
       service: "podcast",
-      providerHint: "groq->gemini->openai",
-      modelId: "groq/whisper-large-v3-turbo->google/gemini-2.5-flash->whisper-1",
+      providerHint: "groq->assemblyai->gemini->openai",
+      modelId:
+        "groq/whisper-large-v3-turbo->assemblyai/universal-2->google/gemini-2.5-flash->whisper-1",
       totalDurationSeconds: 10,
       parts: null,
     });
     const line = setText.mock.calls.at(-1)?.[0] ?? "";
     expect(line).toContain(
-      "Whisper/Groq→Gemini→Whisper/OpenAI, groq/whisper-large-v3-turbo->google/gemini-2.5-flash->whisper-1",
+      "Whisper/Groq→AssemblyAI→Gemini→Whisper/OpenAI, groq/whisper-large-v3-turbo->assemblyai/universal-2->google/gemini-2.5-flash->whisper-1",
     );
 
     vi.useRealTimers();

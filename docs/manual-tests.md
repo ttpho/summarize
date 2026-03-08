@@ -11,6 +11,7 @@ Goal: sanity-check auto selection + presets end-to-end.
 ## Setup
 
 - `OPENAI_API_KEY=...` (optional)
+- `ASSEMBLYAI_API_KEY=...` (optional)
 - `GEMINI_API_KEY=...` (optional)
 - `ANTHROPIC_API_KEY=...` (optional)
 - `XAI_API_KEY=...` (optional)
@@ -27,6 +28,8 @@ Tip: use `--verbose` to see model attempts + the chosen model.
   - `summarize --max-output-tokens 99999 https://example.com`
 - Missing-key skip (configure only one key; should skip other providers, still succeed):
   - Set only `OPENAI_API_KEY`, then run a website summary; should not try Gemini/Anthropic/XAI.
+- AssemblyAI transcript path:
+  - Set only `ASSEMBLYAI_API_KEY`, then run a podcast URL or `--youtube yt-dlp` flow; `transcriptionProvider` should report `assemblyai`.
 - Podcast URL (Whisper): should show “Downloading audio …” then “Transcribing …” with duration when known.
   - `summarize https://podcasts.apple.com/us/podcast/2424-jelly-roll/id360084272?i=1000740717432 --metrics detailed`
 
