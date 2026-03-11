@@ -8,6 +8,7 @@ const ENV = process.env as Record<string, string | undefined>;
 const XURL_PATH = resolveExecutableInPath("xurl", ENV);
 const LIVE = process.env.SUMMARIZE_LIVE_TESTS === "1" && Boolean(XURL_PATH);
 let cachedIdentity: { userId: string; username: string } | null | undefined;
+let cachedTimelineAvailable: boolean | undefined;
 
 type MeResponse = { data?: { id?: string; username?: string } };
 type TimelineTweet = {
@@ -19,13 +20,39 @@ type TimelineResponse = {
   includes?: { media?: Array<{ media_key?: string; type?: string }> };
 };
 
+function readExecErrorDetail(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const execError = error as Error & { stdout?: string | Buffer; stderr?: string | Buffer };
+  const stdout =
+    typeof execError.stdout === "string"
+      ? execError.stdout
+      : Buffer.isBuffer(execError.stdout)
+        ? execError.stdout.toString("utf8")
+        : "";
+  const stderr =
+    typeof execError.stderr === "string"
+      ? execError.stderr
+      : Buffer.isBuffer(execError.stderr)
+        ? execError.stderr.toString("utf8")
+        : "";
+  return [stdout.trim(), stderr.trim(), error.message].filter(Boolean).join("\n");
+}
+
+function isUsageCapExceededError(error: unknown): boolean {
+  return /UsageCapExceeded|usage cap exceeded/i.test(readExecErrorDetail(error));
+}
+
 function readJson<T>(endpoint: string): T {
-  const stdout = execFileSync("xurl", [endpoint], {
-    env: ENV,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  return JSON.parse(stdout) as T;
+  try {
+    const stdout = execFileSync("xurl", [endpoint], {
+      env: ENV,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    return JSON.parse(stdout) as T;
+  } catch (error) {
+    throw new Error(readExecErrorDetail(error));
+  }
 }
 
 function resolveLiveIdentity(): { userId: string; username: string } {
@@ -51,6 +78,21 @@ function hasAuthenticatedXurl(): boolean {
   } catch {
     return false;
   }
+}
+
+function hasTimelineXurl(): boolean {
+  if (cachedTimelineAvailable !== undefined) return cachedTimelineAvailable;
+  try {
+    resolveRecentTweets();
+    cachedTimelineAvailable = true;
+  } catch (error) {
+    if (isUsageCapExceededError(error)) {
+      cachedTimelineAvailable = false;
+      return false;
+    }
+    throw error;
+  }
+  return cachedTimelineAvailable;
 }
 
 function resolveRecentTweets(): {
@@ -103,7 +145,7 @@ const createClient = () =>
   });
 
 describe("live xurl tweet reader", () => {
-  const run = LIVE && hasAuthenticatedXurl() ? it : it.skip;
+  const run = LIVE && hasAuthenticatedXurl() && hasTimelineXurl() ? it : it.skip;
 
   run(
     "prefers xurl for tweet extraction when it is installed and authenticated",
