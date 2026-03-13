@@ -48,6 +48,7 @@ import { friendlyFetchError } from "./setup-runtime";
 import { hasResolvedSlidesPayload } from "./slides-pending";
 import { createSidepanelSlidesRuntime } from "./slides-runtime";
 import { shouldSeedPlannedSlidesForRun } from "./slides-seed-policy";
+import { createSlidesSessionStore } from "./slides-session-store";
 import { selectMarkdownForLayout, type SlideTextMode } from "./slides-state";
 import { createSlidesTextController } from "./slides-text-controller";
 import { createSlidesViewRuntime } from "./slides-view-runtime";
@@ -196,9 +197,6 @@ async function send(message: PanelToBg) {
 let autoValue = false;
 let chatEnabledValue = defaultSettings.chatEnabled;
 let automationEnabledValue = defaultSettings.automationEnabled;
-let slidesEnabledValue = defaultSettings.slidesEnabled;
-let slidesParallelValue = defaultSettings.slidesParallel;
-let slidesOcrEnabledValue = defaultSettings.slidesOcrEnabled;
 let autoKickTimer = 0;
 
 const MAX_CHAT_MESSAGES = 1000;
@@ -212,17 +210,7 @@ let activeTabId: number | null = null;
 let activeTabUrl: string | null = null;
 let lastPanelOpen = false;
 let lastAction: "summarize" | "chat" | null = null;
-let inputMode: "page" | "video" = "page";
-let inputModeOverride: "page" | "video" | null = null;
-let mediaAvailable = false;
 let automationNoticeSticky = false;
-let summarizeVideoLabel = "Video";
-let summarizePageWords: number | null = null;
-let summarizeVideoDurationSeconds: number | null = null;
-
-let slidesBusy = false;
-let slidesExpanded = true;
-let slidesLayoutValue: SlidesLayout = defaultSettings.slidesLayout;
 let slidesRenderer: {
   applyLayout: () => void;
   clear: () => void;
@@ -243,18 +231,19 @@ let slidesHydrator: {
 } | null = null;
 let settingsHydrated = false;
 let pendingSettingsSnapshot: Partial<typeof defaultSettings> | null = null;
-let slidesContextRequestId = 0;
-let slidesContextPending = false;
-let slidesContextUrl: string | null = null;
-let slidesSeededSourceId: string | null = null;
-let slidesAppliedRunId: string | null = null;
-let pendingRunForPlannedSlides: RunStart | null = null;
+const slidesSession = createSlidesSessionStore({
+  slidesEnabled: defaultSettings.slidesEnabled,
+  slidesParallel: defaultSettings.slidesParallel,
+  slidesOcrEnabled: defaultSettings.slidesOcrEnabled,
+  slidesLayout: defaultSettings.slidesLayout,
+});
+const slidesState = slidesSession.state;
 const pendingSummaryRunsByUrl = new Map<string, RunStart>();
 const pendingSlidesRunsByUrl = new Map<string, { runId: string; url: string }>();
 const slidesTextController = createSlidesTextController({
   getSlides: () => panelState.slides?.slides ?? null,
   getLengthValue: () => appearanceControls.getLengthValue(),
-  getSlidesOcrEnabled: () => slidesOcrEnabledValue,
+  getSlidesOcrEnabled: () => slidesState.slidesOcrEnabled,
 });
 
 const chatHistoryStore = createChatHistoryStore({ chatLimits });
@@ -318,7 +307,7 @@ function stopSlidesSummaryStream() {
 
 function resolveActiveSlidesRunId(): string | null {
   if (panelState.slidesRunId) return panelState.slidesRunId;
-  if (!slidesParallelValue && panelState.runId) return panelState.runId;
+  if (!slidesState.slidesParallel && panelState.runId) return panelState.runId;
   return null;
 }
 
@@ -338,12 +327,12 @@ function maybeStartPendingSlidesForUrl(url: string | null) {
   const key = normalizePanelUrl(url);
   const pending = pendingSlidesRunsByUrl.get(key);
   if (!pending) return;
-  if (!slidesEnabledValue) return;
-  const effectiveInputMode = inputModeOverride ?? inputMode;
+  if (!slidesState.slidesEnabled) return;
+  const effectiveInputMode = slidesSession.resolveInputMode();
   if (effectiveInputMode !== "video") return;
   if (slidesHydrator.isStreaming()) return;
   pendingSlidesRunsByUrl.delete(key);
-  if (hasResolvedSlidesPayload(panelState.slides, slidesSeededSourceId)) return;
+  if (hasResolvedSlidesPayload(panelState.slides, slidesState.slidesSeededSourceId)) return;
   startSlidesStreamForRunId(pending.runId);
   startSlidesSummaryStreamForRunId(pending.runId, pending.url);
 }
@@ -365,7 +354,7 @@ function attachSummaryRun(run: RunStart) {
   }
   metricsController.setActiveMode("summary");
   panelState.runId = run.id;
-  panelState.slidesRunId = slidesParallelValue ? null : run.id;
+  panelState.slidesRunId = slidesState.slidesParallel ? null : run.id;
   panelState.currentSource = { url: run.url, title: run.title };
   currentRunTabId = activeTabId;
   headerController.setBaseTitle(run.title || run.url || "Summarize");
@@ -378,21 +367,21 @@ function attachSummaryRun(run: RunStart) {
       modelLabel: fallbackModel,
     };
   }
-  pendingRunForPlannedSlides = run;
+  slidesState.pendingRunForPlannedSlides = run;
   maybeSeedPlannedSlidesForPendingRun();
   if (!panelState.summaryMarkdown?.trim()) {
     renderMarkdownDisplay();
   }
-  if (!slidesParallelValue) {
+  if (!slidesState.slidesParallel) {
     startSlidesStream(run);
   }
   void streamController.start(run);
 }
 
 function maybeSeedPlannedSlidesForPendingRun() {
-  if (!pendingRunForPlannedSlides) return false;
-  if (seedPlannedSlidesForRun(pendingRunForPlannedSlides)) {
-    pendingRunForPlannedSlides = null;
+  if (!slidesState.pendingRunForPlannedSlides) return false;
+  if (seedPlannedSlidesForRun(slidesState.pendingRunForPlannedSlides)) {
+    slidesState.pendingRunForPlannedSlides = null;
     return true;
   }
   return false;
@@ -692,7 +681,7 @@ const summaryViewRuntime = createSummaryViewRuntime({
   refreshSummarizeControl,
   resetChatState,
   setSlidesTranscriptTimedText,
-  getSlidesParallelValue: () => slidesParallelValue,
+  getSlidesParallelValue: () => slidesState.slidesParallel,
   getCurrentRunTabId: () => currentRunTabId,
   getActiveTabId: () => activeTabId,
   getActiveTabUrl: () => activeTabUrl,
@@ -700,19 +689,19 @@ const summaryViewRuntime = createSummaryViewRuntime({
     currentRunTabId = value;
   },
   setSlidesContextPending: (value) => {
-    slidesContextPending = value;
+    slidesState.slidesContextPending = value;
   },
   setSlidesContextUrl: (value) => {
-    slidesContextUrl = value;
+    slidesState.slidesContextUrl = value;
   },
   setSlidesSeededSourceId: (value) => {
-    slidesSeededSourceId = value;
+    slidesState.slidesSeededSourceId = value;
   },
   setSlidesAppliedRunId: (value) => {
-    slidesAppliedRunId = value;
+    slidesState.slidesAppliedRunId = value;
   },
   setSlidesExpanded: (value) => {
-    slidesExpanded = value;
+    slidesState.slidesExpanded = value;
   },
   resolveActiveSlidesRunId,
   getSlidesSummaryState: () => ({
@@ -819,40 +808,37 @@ slidesViewRuntime = createSlidesViewRuntime({
     autoSummarize: autoValue,
     currentSourceTitle: panelState.currentSource?.title ?? null,
     currentSourceUrl: panelState.currentSource?.url ?? null,
-    inputMode: inputModeOverride ?? inputMode,
+    inputMode: slidesSession.resolveInputMode(),
     panelState,
-    slidesEnabled: slidesEnabledValue,
-    slidesLayout: slidesLayoutValue,
-    slidesExpanded,
-    mediaAvailable,
+    slidesEnabled: slidesState.slidesEnabled,
+    slidesLayout: slidesState.slidesLayout,
+    slidesExpanded: slidesState.slidesExpanded,
+    mediaAvailable: slidesState.mediaAvailable,
   }),
   setSlidesBusyValue: (value) => {
-    slidesBusy = value;
+    slidesState.slidesBusy = value;
   },
-  getSlidesBusy: () => slidesBusy,
+  getSlidesBusy: () => slidesState.slidesBusy,
   setSlidesContextPending: (value) => {
-    slidesContextPending = value;
+    slidesState.slidesContextPending = value;
   },
-  getSlidesContextPending: () => slidesContextPending,
+  getSlidesContextPending: () => slidesState.slidesContextPending,
   setSlidesContextUrl: (value) => {
-    slidesContextUrl = value;
+    slidesState.slidesContextUrl = value;
   },
-  getSlidesContextUrl: () => slidesContextUrl,
+  getSlidesContextUrl: () => slidesState.slidesContextUrl,
   setSlidesSeededSourceId: (value) => {
-    slidesSeededSourceId = value;
+    slidesState.slidesSeededSourceId = value;
   },
-  getSlidesSeededSourceId: () => slidesSeededSourceId,
+  getSlidesSeededSourceId: () => slidesState.slidesSeededSourceId,
   setSlidesAppliedRunId: (value) => {
-    slidesAppliedRunId = value;
+    slidesState.slidesAppliedRunId = value;
   },
-  getSlidesAppliedRunId: () => slidesAppliedRunId,
+  getSlidesAppliedRunId: () => slidesState.slidesAppliedRunId,
   resolveActiveSlidesRunId,
-  nextSlidesContextRequestId: () => {
-    slidesContextRequestId += 1;
-    return slidesContextRequestId;
-  },
+  nextSlidesContextRequestId: () => slidesSession.nextSlidesContextRequestId(),
   setSlidesExpanded: (value) => {
-    slidesExpanded = value;
+    slidesState.slidesExpanded = value;
   },
 });
 
@@ -890,13 +876,13 @@ registerSidepanelTestHooks({
     await handleSummarizeControlChange(payload);
   },
   getSummarizeMode: () => ({
-    mode: inputModeOverride ?? inputMode,
-    slides: slidesEnabledValue,
-    mediaAvailable,
+    mode: slidesSession.resolveInputMode(),
+    slides: slidesState.slidesEnabled,
+    mediaAvailable: slidesState.mediaAvailable,
   }),
   getSlidesState: () => ({
     slidesCount: panelState.slides?.slides.length ?? 0,
-    layout: slidesLayoutValue,
+    layout: slidesState.slidesLayout,
     hasSlides: Boolean(panelState.slides),
   }),
   renderSlidesNow: () => {
@@ -912,7 +898,7 @@ registerSidepanelTestHooks({
   applySummarySnapshot: (payload) => {
     resetSummaryView({ preserveChat: false, clearRunId: false, stopSlides: false });
     panelState.runId = payload.run.id;
-    panelState.slidesRunId = slidesParallelValue ? null : payload.run.id;
+    panelState.slidesRunId = slidesState.slidesParallel ? null : payload.run.id;
     panelState.currentSource = { url: payload.run.url, title: payload.run.title };
     currentRunTabId = activeTabId;
     headerController.setBaseTitle(payload.run.title || payload.run.url || "Summarize");
@@ -925,9 +911,9 @@ registerSidepanelTestHooks({
     setPhase("idle");
   },
   forceRenderSlides: () => {
-    slidesEnabledValue = true;
-    inputMode = "video";
-    inputModeOverride = "video";
+    slidesState.slidesEnabled = true;
+    slidesState.inputMode = "video";
+    slidesState.inputModeOverride = "video";
     return slidesRenderer?.forceRender();
   },
   showInlineError: (message) => {
@@ -1065,12 +1051,12 @@ const slidesRuntime = createSidepanelSlidesRuntime({
   },
   friendlyFetchError,
   getActiveTabUrl: () => activeTabUrl,
-  getInputMode: () => inputMode,
-  getInputModeOverride: () => inputModeOverride,
+  getInputMode: () => slidesState.inputMode,
+  getInputModeOverride: () => slidesState.inputModeOverride,
   getLengthValue: () => appearanceControls.getLengthValue(),
   getPanelPhase: () => panelState.phase,
   getPanelState: () => panelState,
-  getSlidesEnabled: () => slidesEnabledValue,
+  getSlidesEnabled: () => slidesState.slidesEnabled,
   getToken: async () => (await loadSettings()).token,
   getTranscriptTimedText: () => slidesTextController.getTranscriptTimedText(),
   getUiState: () => panelState.ui,
@@ -1089,10 +1075,10 @@ const slidesRuntime = createSidepanelSlidesRuntime({
     panelCacheController.scheduleSync();
   },
   setInputMode: (value) => {
-    inputMode = value;
+    slidesState.inputMode = value;
   },
   setInputModeOverride: (value) => {
-    inputModeOverride = value;
+    slidesState.inputModeOverride = value;
   },
   setSlidesBusy,
   setSlidesRunId: (value) => {
@@ -1163,9 +1149,9 @@ const summaryStreamRuntime = createSummaryStreamRuntime({
     panelCacheController.scheduleSync();
   },
   seedPlannedSlidesForPendingRun: () => {
-    if (pendingRunForPlannedSlides) {
-      seedPlannedSlidesForRun(pendingRunForPlannedSlides);
-      pendingRunForPlannedSlides = null;
+    if (slidesState.pendingRunForPlannedSlides) {
+      seedPlannedSlidesForRun(slidesState.pendingRunForPlannedSlides);
+      slidesState.pendingRunForPlannedSlides = null;
     }
   },
   setSlidesBusy,
@@ -1246,42 +1232,42 @@ const uiStateRuntime = createUiStateRuntime({
   setAutomationEnabledValue: (value) => {
     automationEnabledValue = value;
   },
-  getSlidesEnabledValue: () => slidesEnabledValue,
+  getSlidesEnabledValue: () => slidesState.slidesEnabled,
   setSlidesEnabledValue: (value) => {
-    slidesEnabledValue = value;
+    slidesState.slidesEnabled = value;
   },
-  getSlidesParallelValue: () => slidesParallelValue,
+  getSlidesParallelValue: () => slidesState.slidesParallel,
   setSlidesParallelValue: (value) => {
-    slidesParallelValue = value;
+    slidesState.slidesParallel = value;
   },
-  getSlidesOcrEnabledValue: () => slidesOcrEnabledValue,
+  getSlidesOcrEnabledValue: () => slidesState.slidesOcrEnabled,
   setSlidesOcrEnabledValue: (value) => {
-    slidesOcrEnabledValue = value;
+    slidesState.slidesOcrEnabled = value;
   },
-  getInputMode: () => inputMode,
+  getInputMode: () => slidesState.inputMode,
   setInputMode: (value) => {
-    inputMode = value;
+    slidesState.inputMode = value;
   },
-  getInputModeOverride: () => inputModeOverride,
+  getInputModeOverride: () => slidesState.inputModeOverride,
   setInputModeOverride: (value) => {
-    inputModeOverride = value;
+    slidesState.inputModeOverride = value;
   },
-  getMediaAvailable: () => mediaAvailable,
+  getMediaAvailable: () => slidesState.mediaAvailable,
   setMediaAvailable: (value) => {
-    mediaAvailable = value;
+    slidesState.mediaAvailable = value;
   },
-  getSlidesLayoutValue: () => slidesLayoutValue,
+  getSlidesLayoutValue: () => slidesState.slidesLayout,
   setSummarizeVideoLabel: (value) => {
-    summarizeVideoLabel = value;
+    slidesState.summarizeVideoLabel = value;
   },
   setSummarizePageWords: (value) => {
-    summarizePageWords = value;
+    slidesState.summarizePageWords = value;
   },
   setSummarizeVideoDurationSeconds: (value) => {
-    summarizeVideoDurationSeconds = value;
+    slidesState.summarizeVideoDurationSeconds = value;
   },
   isStreaming,
-  getSlidesBusy: () => slidesBusy,
+  getSlidesBusy: () => slidesState.slidesBusy,
   onSlidesOcrChanged: updateSlidesTextState,
 });
 
@@ -1310,9 +1296,9 @@ const bgMessageRuntime = createSidepanelBgMessageRuntime({
   startSlidesSummaryStreamForRunId: (runId, url) => {
     startSlidesSummaryStreamForRunId(runId, url ?? null);
   },
-  getSlidesContextRequestId: () => slidesContextRequestId,
+  getSlidesContextRequestId: () => slidesState.slidesContextRequestId,
   setSlidesContextPending: (value) => {
-    slidesContextPending = value;
+    slidesState.slidesContextPending = value;
   },
   setSlidesTranscriptTimedText,
   updateSlidesTextState,
@@ -1370,7 +1356,7 @@ const interactionRuntime = createSidepanelInteractionRuntime({
   clearInlineError: () => {
     errorController.clearInlineError();
   },
-  getInputModeOverride: () => inputModeOverride,
+  getInputModeOverride: () => slidesState.inputModeOverride,
   retryChat: () => {
     chatStreamRuntime.retryChat();
   },
@@ -1418,32 +1404,32 @@ summarizeControlRuntime = createSummarizeControlRuntime({
   slidesLayoutEl,
   slidesTextController,
   getState: () => ({
-    inputMode,
-    inputModeOverride,
+    inputMode: slidesState.inputMode,
+    inputModeOverride: slidesState.inputModeOverride,
     hasSummaryMarkdown: Boolean(panelState.summaryMarkdown),
-    slidesEnabled: slidesEnabledValue,
-    slidesOcrEnabled: slidesOcrEnabledValue,
+    slidesEnabled: slidesState.slidesEnabled,
+    slidesOcrEnabled: slidesState.slidesOcrEnabled,
     autoSummarize: autoValue,
-    slidesBusy,
-    mediaAvailable,
-    slidesLayout: slidesLayoutValue,
-    summarizeVideoLabel,
-    summarizePageWords,
-    summarizeVideoDurationSeconds,
+    slidesBusy: slidesState.slidesBusy,
+    mediaAvailable: slidesState.mediaAvailable,
+    slidesLayout: slidesState.slidesLayout,
+    summarizeVideoLabel: slidesState.summarizeVideoLabel,
+    summarizePageWords: slidesState.summarizePageWords,
+    summarizeVideoDurationSeconds: slidesState.summarizeVideoDurationSeconds,
     activeTabUrl,
     currentSourceUrl: panelState.currentSource?.url ?? null,
   }),
   setInputMode: (value) => {
-    inputMode = value;
+    slidesState.inputMode = value;
   },
   setInputModeOverride: (value) => {
-    inputModeOverride = value;
+    slidesState.inputModeOverride = value;
   },
   setSlidesEnabled: (value) => {
-    slidesEnabledValue = value;
+    slidesState.slidesEnabled = value;
   },
   setSlidesLayoutValue: (value) => {
-    slidesLayoutValue = value;
+    slidesState.slidesLayout = value;
   },
   patchSettings,
   loadSettings,
@@ -1474,15 +1460,15 @@ summarizeControlRuntime = createSummarizeControlRuntime({
 });
 
 function seedPlannedSlidesForRun(run: RunStart) {
-  const durationSeconds = summarizeVideoDurationSeconds;
+  const durationSeconds = slidesState.summarizeVideoDurationSeconds;
   if (
     !shouldSeedPlannedSlidesForRun({
       durationSeconds,
-      inputMode: inputModeOverride ?? inputMode,
+      inputMode: slidesSession.resolveInputMode(),
       media: panelState.ui?.media,
-      mediaAvailable,
+      mediaAvailable: slidesState.mediaAvailable,
       runUrl: run.url,
-      slidesEnabled: slidesEnabledValue,
+      slidesEnabled: slidesState.slidesEnabled,
     })
   ) {
     return false;
@@ -1531,7 +1517,7 @@ function seedPlannedSlidesForRun(run: RunStart) {
     ocrAvailable: false,
     slides,
   };
-  slidesSeededSourceId = sourceId;
+  slidesState.slidesSeededSourceId = sourceId;
   updateSlidesTextState();
   void requestSlidesContext();
   queueSlidesRender();
@@ -1659,7 +1645,7 @@ bootstrapSidepanel({
     automationEnabledValue = value;
   },
   setSlidesLayoutValue: (value) => {
-    slidesLayoutValue = value as SlidesLayout;
+    slidesState.slidesLayout = value as SlidesLayout;
   },
   setSlidesLayoutInputValue: (value) => {
     slidesLayoutEl.value = value;
