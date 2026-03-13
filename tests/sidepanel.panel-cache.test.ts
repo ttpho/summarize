@@ -57,6 +57,38 @@ describe("panel cache controller", () => {
     vi.useRealTimers();
   });
 
+  it("stores scheduled snapshots before the async sync fires", () => {
+    vi.useFakeTimers();
+    const sendCache = vi.fn();
+    const sendRequest = vi.fn();
+    const payload = samplePayload({
+      slides: {
+        sourceUrl: "https://example.com",
+        sourceId: "youtube-abc123",
+        sourceKind: "youtube",
+        ocrAvailable: false,
+        slides: [
+          { index: 1, timestamp: 0, imageUrl: "" },
+          { index: 2, timestamp: 30, imageUrl: "" },
+        ],
+      },
+    });
+    const controller = createPanelCacheController({
+      getSnapshot: () => payload,
+      sendCache,
+      sendRequest,
+    });
+
+    controller.scheduleSync(0);
+
+    expect(controller.resolve(1, "https://example.com")).toEqual(payload);
+    expect(sendCache).not.toHaveBeenCalled();
+
+    vi.runAllTimers();
+    expect(sendCache).toHaveBeenCalledWith(payload);
+    vi.useRealTimers();
+  });
+
   it("returns pending request info on cache response", () => {
     const sendCache = vi.fn();
     const sendRequest = vi.fn();

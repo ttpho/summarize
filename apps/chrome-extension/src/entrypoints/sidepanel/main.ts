@@ -368,7 +368,6 @@ function attachSummaryRun(run: RunStart) {
     };
   }
   slidesState.pendingRunForPlannedSlides = run;
-  maybeSeedPlannedSlidesForPendingRun();
   if (!panelState.summaryMarkdown?.trim()) {
     renderMarkdownDisplay();
   }
@@ -1460,7 +1459,8 @@ summarizeControlRuntime = createSummarizeControlRuntime({
 });
 
 function seedPlannedSlidesForRun(run: RunStart) {
-  const durationSeconds = slidesState.summarizeVideoDurationSeconds;
+  const durationSeconds =
+    slidesState.summarizeVideoDurationSeconds ?? panelState.ui?.stats.videoDurationSeconds ?? null;
   if (
     !shouldSeedPlannedSlidesForRun({
       durationSeconds,
@@ -1521,6 +1521,7 @@ function seedPlannedSlidesForRun(run: RunStart) {
   updateSlidesTextState();
   void requestSlidesContext();
   queueSlidesRender();
+  panelCacheController.scheduleSync(0);
   return true;
 }
 
